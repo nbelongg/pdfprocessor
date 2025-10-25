@@ -111,9 +111,63 @@ Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunk
 
 ### Data Storage
 - **Pinecone**: Primary vector storage (cloud-hosted, serverless)
+- **PostgreSQL**: Processing history, job tracking, and chunk storage (local development database)
 - **Session State**: Temporary configuration and processing state (in-memory)
+
+### Database Schema
+1. **processing_jobs**: Tracks all processing jobs
+   - job_id, status, configuration, metrics (PDFs, chunks, embeddings)
+   - Timestamps for created, updated, and completed
+   
+2. **processing_chunks**: Stores individual chunks for preview and validation
+   - Links to job via job_id
+   - Contains chunk text, metadata, namespace
+   - Tracks whether embedding has been uploaded to Pinecone
+
+3. **metadata_transformations**: Stores custom metadata transformation rules
+   - Reusable transformations for metadata processing
 
 ### Authentication Flow
 - Application: Password-based entry (APP_PASSWORD environment variable)
-- Google Services: Service account credentials (JSON file upload)
+- Google Services: Service account credentials (JSON file upload - required)
 - External APIs: API key-based authentication (environment variables or user input)
+
+## Recent Changes (Phase 2)
+
+### Processing History & Tracking
+- All processing jobs are now persisted in PostgreSQL database
+- Unique job IDs generated for each processing run
+- Job status tracking: pending, running, completed, preview, error
+- Detailed metrics: PDFs processed, chunks created, embeddings generated, vectors stored
+
+### Preview Mode
+- **Preview Chunks Tab**: Generate previews without uploading to Pinecone
+- Parse and chunk PDFs to inspect results before final processing
+- View individual chunks with text content and metadata
+- Validate chunking strategy effectiveness before committing
+
+### Processing History Viewer
+- **History Tab**: Browse all past processing jobs
+- View job details, status, and metrics
+- Inspect chunks generated for each job
+- Track which chunks have been uploaded to Pinecone
+
+### Vector Search Testing
+- **Search Test Tab**: Query Pinecone index directly from the app
+- Test semantic search with custom queries
+- View search results with relevance scores
+- Inspect returned chunks and metadata
+- Validate that embeddings are working correctly
+
+### Metadata Transformation Rules (app_transformations.py)
+- Separate interface for creating reusable metadata transformation rules
+- Transformation types:
+  - Map Values: Transform specific values to new values
+  - Combine Columns: Merge multiple columns into one
+  - Extract Pattern: Use regex to extract data
+  - Conditional Transform: Apply transformations based on conditions
+- Save, manage, and export transformation rules as JSON
+
+## Application Pages
+1. **app.py**: Main PDF processing pipeline with 8 tabs
+2. **app_transformations.py**: Metadata transformation rule manager
