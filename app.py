@@ -245,6 +245,8 @@ elif selected_page == "🏢 Products":
                         if st.button(f"🗑️ Delete", key=f"delete_product_{product['id']}"):
                             delete_product(product['id'])
                             st.session_state.products = get_products()
+                            if 'edit_product_id' in st.session_state:
+                                del st.session_state.edit_product_id
                             st.success(f"Deleted product: {product['name']}")
                             st.rerun()
                     with col_toggle:
@@ -266,23 +268,27 @@ elif selected_page == "🏢 Products":
             product_to_edit = get_product(st.session_state.edit_product_id)
             if product_to_edit:
                 st.info(f"Editing: {product_to_edit['name']}")
+            else:
+                st.error("Product not found. It may have been deleted.")
+                del st.session_state.edit_product_id
+                edit_mode = False
         
         product_name = st.text_input(
             "Product/Startup Name",
-            value=product_to_edit['name'] if edit_mode else "",
+            value=product_to_edit['name'] if (edit_mode and product_to_edit) else "",
             help="e.g., 'Startup A', 'Research Project B'"
         )
         
         product_description = st.text_area(
             "Description",
-            value=product_to_edit.get('description', '') if edit_mode else "",
+            value=product_to_edit.get('description', '') if product_to_edit else "",
             help="Brief description of this product/startup"
         )
         
         st.markdown("### Pinecone Configuration")
         pinecone_index = st.text_input(
             "Pinecone Index Name",
-            value=product_to_edit['pinecone_index'] if edit_mode else "",
+            value=product_to_edit['pinecone_index'] if product_to_edit else "",
             help="The Pinecone index where vectors for this product will be stored"
         )
         
@@ -291,28 +297,28 @@ elif selected_page == "🏢 Products":
         
         llamaparse_secret = st.text_input(
             "LlamaParse API Key Secret Name",
-            value=product_to_edit.get('llamaparse_api_key_secret', '') if edit_mode else "",
+            value=product_to_edit.get('llamaparse_api_key_secret', '') if product_to_edit else "",
             placeholder="e.g., PRODUCT_A_LLAMAPARSE_KEY",
             help="Name of the Replit secret containing the LlamaParse API key"
         )
         
         openai_secret = st.text_input(
             "OpenAI API Key Secret Name",
-            value=product_to_edit.get('openai_api_key_secret', '') if edit_mode else "",
+            value=product_to_edit.get('openai_api_key_secret', '') if product_to_edit else "",
             placeholder="e.g., PRODUCT_A_OPENAI_KEY",
             help="Name of the Replit secret containing the OpenAI API key (if using OpenAI embeddings)"
         )
         
         pinecone_secret = st.text_input(
             "Pinecone API Key Secret Name",
-            value=product_to_edit.get('pinecone_api_key_secret', '') if edit_mode else "",
+            value=product_to_edit.get('pinecone_api_key_secret', '') if product_to_edit else "",
             placeholder="e.g., PRODUCT_A_PINECONE_KEY",
             help="Name of the Replit secret containing the Pinecone API key"
         )
         
         google_credentials_secret = st.text_input(
             "Google Service Account JSON Secret Name",
-            value=product_to_edit.get('google_credentials_secret', '') if edit_mode else "",
+            value=product_to_edit.get('google_credentials_secret', '') if product_to_edit else "",
             placeholder="e.g., PRODUCT_A_GOOGLE_CREDS_JSON",
             help="Name of the Replit secret containing the Google service account JSON (as a string)"
         )
@@ -326,33 +332,33 @@ elif selected_page == "🏢 Products":
                 parsing_mode = st.selectbox(
                     "Parsing Mode",
                     ["auto", "fast", "premium"],
-                    index=["auto", "fast", "premium"].index(product_to_edit.get('parsing_mode', 'auto')) if edit_mode else 0,
+                    index=["auto", "fast", "premium"].index(product_to_edit.get('parsing_mode', 'auto')) if product_to_edit else 0,
                     help="LlamaParse parsing quality mode"
                 )
                 
                 result_type = st.selectbox(
                     "Result Type",
                     ["markdown", "text"],
-                    index=["markdown", "text"].index(product_to_edit.get('result_type', 'markdown')) if edit_mode else 0,
+                    index=["markdown", "text"].index(product_to_edit.get('result_type', 'markdown')) if product_to_edit else 0,
                     help="Output format from LlamaParse"
                 )
             
             with col2:
                 language = st.text_input(
                     "Language Code",
-                    value=product_to_edit.get('language', 'en') if edit_mode else 'en',
+                    value=product_to_edit.get('language', 'en') if product_to_edit else 'en',
                     help="ISO language code (e.g., 'en', 'es', 'fr')"
                 )
                 
                 use_vendor_multimodal = st.checkbox(
                     "Use Vendor Multimodal",
-                    value=product_to_edit.get('use_vendor_multimodal', True) if edit_mode else True,
+                    value=product_to_edit.get('use_vendor_multimodal', True) if product_to_edit else True,
                     help="Enable multimodal parsing for images/tables"
                 )
             
             page_separator = st.text_input(
                 "Page Separator",
-                value=product_to_edit.get('page_separator', '\n---\n') if edit_mode else '\n---\n',
+                value=product_to_edit.get('page_separator', '\n---\n') if product_to_edit else '\n---\n',
                 help="String used to separate pages in parsed output"
             )
         
@@ -362,7 +368,7 @@ elif selected_page == "🏢 Products":
                 chunking_strategy = st.selectbox(
                     "Chunking Strategy",
                     ["Token-based", "Sentence-based", "Semantic"],
-                    index=["Token-based", "Sentence-based", "Semantic"].index(product_to_edit.get('default_chunking_strategy', 'Token-based')) if edit_mode else 0,
+                    index=["Token-based", "Sentence-based", "Semantic"].index(product_to_edit.get('default_chunking_strategy', 'Token-based')) if product_to_edit else 0,
                     help="How to split text into chunks"
                 )
                 
@@ -370,7 +376,7 @@ elif selected_page == "🏢 Products":
                     "Chunk Size",
                     min_value=128,
                     max_value=4096,
-                    value=product_to_edit.get('default_chunk_size', 1024) if edit_mode else 1024,
+                    value=product_to_edit.get('default_chunk_size', 1024) if product_to_edit else 1024,
                     step=128,
                     help="Maximum size of each chunk (tokens or characters)"
                 )
@@ -380,7 +386,7 @@ elif selected_page == "🏢 Products":
                     "Chunk Overlap",
                     min_value=0,
                     max_value=512,
-                    value=product_to_edit.get('chunk_overlap', 200) if edit_mode else 200,
+                    value=product_to_edit.get('chunk_overlap', 200) if product_to_edit else 200,
                     step=50,
                     help="Number of tokens/characters to overlap between chunks"
                 )
@@ -389,7 +395,7 @@ elif selected_page == "🏢 Products":
                     "Semantic Buffer Size",
                     min_value=1,
                     max_value=5,
-                    value=product_to_edit.get('semantic_buffer_size', 1) if edit_mode else 1,
+                    value=product_to_edit.get('semantic_buffer_size', 1) if product_to_edit else 1,
                     help="Buffer size for semantic chunking (only used if strategy is Semantic)"
                 )
         
@@ -397,7 +403,7 @@ elif selected_page == "🏢 Products":
             embedding_model = st.selectbox(
                 "Embedding Model",
                 ["text-embedding-3-small", "text-embedding-3-large"],
-                index=["text-embedding-3-small", "text-embedding-3-large"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if edit_mode and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large"] else 0,
+                index=["text-embedding-3-small", "text-embedding-3-large"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if product_to_edit and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large"] else 0,
                 help="OpenAI embedding model to use"
             )
         
@@ -406,14 +412,14 @@ elif selected_page == "🏢 Products":
             with col1:
                 pinecone_environment = st.text_input(
                     "Pinecone Environment",
-                    value=product_to_edit.get('pinecone_environment', 'us-east-1') if edit_mode else 'us-east-1',
+                    value=product_to_edit.get('pinecone_environment', 'us-east-1') if product_to_edit else 'us-east-1',
                     help="Pinecone serverless region (e.g., 'us-east-1')"
                 )
             
             with col2:
                 default_namespace = st.text_input(
                     "Default Namespace",
-                    value=product_to_edit.get('default_namespace', 'default') if edit_mode else 'default',
+                    value=product_to_edit.get('default_namespace', 'default') if product_to_edit else 'default',
                     help="Default namespace for vectors in Pinecone"
                 )
         
