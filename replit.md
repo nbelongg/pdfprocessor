@@ -58,3 +58,61 @@ Preferred communication style: Simple, everyday language.
 -   **Pinecone**: Primary vector storage.
 -   **PostgreSQL**: Processing history, job tracking, chunk storage, and configuration for data sources, column mappings, processing jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products.
 -   **Session State**: Temporary configuration and processing state.
+
+## Product Management & Multi-Tenant Support
+
+### Overview
+The application supports managing multiple products/startups with complete isolation through separate Pinecone indexes, API keys, and Google service account credentials. Each product can have its own default processing settings.
+
+### Product Configuration
+Each product in the database stores:
+- **Name & Description**: Product identifier and description
+- **Pinecone Index**: Dedicated index for vector storage
+- **API Key Secret Names**: References to Replit secrets containing:
+  - LlamaParse API key
+  - OpenAI API key (if using OpenAI embeddings)
+  - Pinecone API key
+  - Google service account JSON credentials
+- **Default Settings**: Chunking strategy, chunk size, embedding model
+- **Status**: Active/inactive flag
+
+### Secret Management
+Products use a **secret reference system** for security:
+
+**API Keys**: Product stores the secret name, not the actual key
+- Example: Product "Startup A" has `llamaparse_api_key_secret = "STARTUP_A_LLAMAPARSE_KEY"`
+- In Replit Secrets, you set: `STARTUP_A_LLAMAPARSE_KEY = "llx-actual-api-key-here"`
+- App reads: `os.getenv("STARTUP_A_LLAMAPARSE_KEY")`
+
+**Google Credentials**: Product stores secret name for JSON string
+- Example: Product has `google_credentials_secret = "STARTUP_A_GOOGLE_CREDS"`
+- In Replit Secrets, set the entire JSON as a string:
+  ```
+  STARTUP_A_GOOGLE_CREDS = '{"type": "service_account", "project_id": "...", ...}'
+  ```
+- App parses: `json.loads(os.getenv("STARTUP_A_GOOGLE_CREDS"))`
+
+### Integration with Pipeline
+When processing PDFs:
+1. Data source specifies which product it belongs to
+2. Pipeline loads product configuration
+3. Product-specific settings override global configuration:
+   - API keys from product secrets
+   - Google credentials from product secret
+   - Pinecone index from product config
+   - Default chunking/embedding settings from product
+4. Vectors stored in product-specific Pinecone index
+
+### Integration with Scheduler
+Scheduled jobs automatically use product settings:
+- Inherit product from data source
+- Load product-specific API keys and credentials
+- Route to correct Pinecone index
+- Log which product settings are being used
+
+### Benefits
+- **Complete Isolation**: Each product has separate vector storage
+- **Billing Separation**: Different API keys for different products
+- **Flexible Settings**: Each product can use different processing strategies
+- **Secure Credentials**: Each product can access different Google Drive accounts
+- **Scalability**: Easy to add new products without changing code
