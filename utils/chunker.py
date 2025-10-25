@@ -29,8 +29,8 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]
     
     if strategy == "Token-based":
         splitter = TokenTextSplitter(
-            chunk_size=config.get('chunk_size', 512),
-            chunk_overlap=config.get('chunk_overlap', 50),
+            chunk_size=config.get('chunk_size', 1024),
+            chunk_overlap=config.get('chunk_overlap', 200),
             separator=" "
         )
     
@@ -50,8 +50,8 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]
     
     else:
         splitter = TokenTextSplitter(
-            chunk_size=512,
-            chunk_overlap=50
+            chunk_size=1024,
+            chunk_overlap=200
         )
     
     nodes = splitter.get_nodes_from_documents([doc])

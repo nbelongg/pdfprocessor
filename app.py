@@ -983,15 +983,17 @@ elif selected_page == "⚙️ Processing Settings":
                 "Chunk Size (tokens)",
                 min_value=128,
                 max_value=2048,
-                value=512,
-                step=128
+                value=1024,
+                step=128,
+                help="Number of tokens per chunk (LlamaIndex default: 1024)"
             )
             chunk_overlap = st.slider(
                 "Chunk Overlap (tokens)",
                 min_value=0,
                 max_value=512,
-                value=50,
-                step=10
+                value=200,
+                step=50,
+                help="Token overlap between chunks to preserve context (LlamaIndex default: 200)"
             )
             st.session_state.chunk_size = chunk_size
             st.session_state.chunk_overlap = chunk_overlap
@@ -1042,12 +1044,18 @@ elif selected_page == "⚙️ Processing Settings":
         )
         st.session_state.embedding_model = embedding_model_choice
         
+        if "text-embedding-3-large" in embedding_model_choice:
+            default_dimension = 3072
+        else:
+            default_dimension = 1536
+        
         embedding_dimension = st.number_input(
             "Embedding Dimension",
             min_value=128,
             max_value=3072,
-            value=1536 if "OpenAI" in embedding_model_choice else 384,
-            help="Dimension of embedding vectors (auto-detected)"
+            value=default_dimension,
+            help="Dimension of embedding vectors (text-embedding-3-small/ada-002: 1536, text-embedding-3-large: 3072)",
+            disabled=True
         )
         st.session_state.embedding_dimension = embedding_dimension
         
@@ -1055,8 +1063,8 @@ elif selected_page == "⚙️ Processing Settings":
         
         pinecone_environment = st.text_input(
             "Pinecone Environment",
-            value=st.session_state.get('pinecone_environment', 'gcp-starter'),
-            help="Your Pinecone environment (e.g., gcp-starter, us-east-1-aws)"
+            value=st.session_state.get('pinecone_environment', 'us-east-1'),
+            help="Pinecone environment/region (serverless: us-east-1, us-west-2, etc. | pods: gcp-starter)"
         )
         st.session_state.pinecone_environment = pinecone_environment
         
