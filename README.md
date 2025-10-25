@@ -21,15 +21,19 @@ You'll need API keys for the following services:
 - **LlamaParse**: Get from [cloud.llamaindex.ai](https://cloud.llamaindex.ai)
 - **Pinecone**: Get from [app.pinecone.io](https://app.pinecone.io)
 - **OpenAI** (optional): For OpenAI embeddings from [platform.openai.com](https://platform.openai.com)
-- **Google Cloud**: Service account JSON for Drive & Sheets access
+- **Google Cloud**: Service account JSON for Drive & Sheets access (required)
 
-### 2. Google Cloud Setup
+### 2. Google Cloud Setup (Required)
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com)
 2. Enable Google Drive API and Google Sheets API
-3. Create a Service Account
-4. Download the JSON credentials file
-5. Share your Google Drive folders and Sheets with the service account email
+3. Create a Service Account with the following roles:
+   - Google Drive: Viewer or Editor
+   - Google Sheets: Viewer or Editor
+4. Download the JSON credentials file (keep this secure!)
+5. Share your Google Drive folders and Sheets with the service account email address
+   - The service account email looks like: `your-account@your-project.iam.gserviceaccount.com`
+   - Give it at least "Viewer" permission on files you want to process
 
 ### 3. Environment Variables
 

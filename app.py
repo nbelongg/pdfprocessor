@@ -120,16 +120,6 @@ with tab1:
         else:
             st.info("📤 Upload your service account JSON file")
         
-        st.markdown("---")
-        st.markdown("**Alternative: Use API Keys**")
-        google_api_key = st.text_input(
-            "Google API Key (Optional)",
-            type="password",
-            value=st.session_state.get('google_api_key', os.getenv('GOOGLE_API_KEY', '')),
-            help="Alternative to service account"
-        )
-        if google_api_key:
-            st.session_state.google_api_key = google_api_key
 
     st.markdown("---")
     
@@ -140,8 +130,8 @@ with tab1:
         required_keys.append("Pinecone API Key")
     if embedding_provider == "OpenAI" and not st.session_state.get('openai_api_key'):
         required_keys.append("OpenAI API Key")
-    if not st.session_state.get('google_credentials') and not st.session_state.get('google_api_key'):
-        required_keys.append("Google Credentials")
+    if not st.session_state.get('google_credentials'):
+        required_keys.append("Google Service Account JSON")
     
     if required_keys:
         st.warning(f"⚠️ Missing: {', '.join(required_keys)}")
@@ -180,7 +170,7 @@ with tab2:
             st.session_state.drive_link_column = drive_link_column
         
         if st.button("📥 Load Sheet Data"):
-            if st.session_state.get('google_credentials') or st.session_state.get('google_api_key'):
+            if st.session_state.get('google_credentials'):
                 with st.spinner("Loading Google Sheets data..."):
                     try:
                         from utils.google_sheets import load_sheet_data
@@ -194,7 +184,7 @@ with tab2:
                     except Exception as e:
                         st.error(f"❌ Error loading sheet: {str(e)}")
             else:
-                st.error("❌ Please configure Google credentials first")
+                st.error("❌ Please upload Google Service Account JSON file first")
     
     with col2:
         st.subheader("Data Preview")
@@ -302,14 +292,24 @@ with tab3:
             st.session_state.chunk_overlap = chunk_overlap
         
         elif chunking_strategy == "Sentence-based":
-            sentences_per_chunk = st.slider(
-                "Sentences per Chunk",
-                min_value=1,
-                max_value=20,
-                value=5,
-                step=1
+            chunk_size = st.slider(
+                "Chunk Size (characters)",
+                min_value=256,
+                max_value=4096,
+                value=1024,
+                step=128,
+                help="Maximum size of each chunk"
             )
-            st.session_state.sentences_per_chunk = sentences_per_chunk
+            chunk_overlap = st.slider(
+                "Chunk Overlap (characters)",
+                min_value=0,
+                max_value=512,
+                value=200,
+                step=50,
+                help="Overlap between consecutive chunks"
+            )
+            st.session_state.chunk_size = chunk_size
+            st.session_state.chunk_overlap = chunk_overlap
         
         elif chunking_strategy == "Semantic":
             st.info("Semantic chunking uses AI to identify natural breakpoints")
@@ -447,7 +447,6 @@ with tab4:
                         'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
                         'chunk_size': st.session_state.get('chunk_size', 512),
                         'chunk_overlap': st.session_state.get('chunk_overlap', 50),
-                        'sentences_per_chunk': st.session_state.get('sentences_per_chunk', 5),
                         'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
                         'embedding_model': st.session_state.get('embedding_model'),
                         'embedding_dimension': st.session_state.get('embedding_dimension', 1536),
