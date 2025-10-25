@@ -48,7 +48,8 @@ def init_products_table():
                 ADD COLUMN IF NOT EXISTS chunk_overlap INTEGER DEFAULT 200,
                 ADD COLUMN IF NOT EXISTS semantic_buffer_size INTEGER DEFAULT 1,
                 ADD COLUMN IF NOT EXISTS pinecone_environment VARCHAR(100) DEFAULT 'us-east-1',
-                ADD COLUMN IF NOT EXISTS default_namespace VARCHAR(255) DEFAULT 'default'
+                ADD COLUMN IF NOT EXISTS default_namespace VARCHAR(255) DEFAULT 'default',
+                ADD COLUMN IF NOT EXISTS embedding_dimension INTEGER
             """)
             
             # Migrate existing VARCHAR(255) secret columns to TEXT
@@ -775,6 +776,7 @@ def create_product(
     chunk_size: int = 1024,
     chunk_overlap: int = 200,
     embedding_model: str = 'text-embedding-3-small',
+    embedding_dimension: int = None,
     parsing_mode: str = 'auto',
     result_type: str = 'markdown',
     language: str = 'en',
@@ -794,14 +796,14 @@ def create_product(
                 (name, description, pinecone_index, llamaparse_api_key_secret,
                  openai_api_key_secret, pinecone_api_key_secret, google_credentials_secret,
                  default_chunking_strategy, default_chunk_size, chunk_overlap, default_embedding_model,
-                 parsing_mode, result_type, language, use_vendor_multimodal, page_separator,
+                 embedding_dimension, parsing_mode, result_type, language, use_vendor_multimodal, page_separator,
                  semantic_buffer_size, pinecone_environment, default_namespace)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (name, description, pinecone_index, llamaparse_secret, openai_secret,
                  pinecone_secret, google_credentials_secret, chunking_strategy, chunk_size, chunk_overlap,
-                 embedding_model, parsing_mode, result_type, language, use_vendor_multimodal,
+                 embedding_model, embedding_dimension, parsing_mode, result_type, language, use_vendor_multimodal,
                  page_separator, semantic_buffer_size, pinecone_environment, default_namespace)
             )
             result = cur.fetchone()
@@ -823,6 +825,7 @@ def update_product(
     chunk_size: int = None,
     chunk_overlap: int = None,
     embedding_model: str = None,
+    embedding_dimension: int = None,
     parsing_mode: str = None,
     result_type: str = None,
     language: str = None,
@@ -873,6 +876,9 @@ def update_product(
             if embedding_model is not None:
                 set_clauses.append("default_embedding_model = %s")
                 values.append(embedding_model)
+            if embedding_dimension is not None:
+                set_clauses.append("embedding_dimension = %s")
+                values.append(embedding_dimension)
             if parsing_mode is not None:
                 set_clauses.append("parsing_mode = %s")
                 values.append(parsing_mode)
