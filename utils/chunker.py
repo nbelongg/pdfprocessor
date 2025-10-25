@@ -61,13 +61,17 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]
 def get_embed_model(config: Dict):
     """Get the embedding model based on configuration."""
     embedding_model = config.get('embedding_model', '')
+    embedding_dimension = config.get('embedding_dimension')
     
     if 'OpenAI' in embedding_model:
         model_name = embedding_model.split('(')[0].strip()
-        return OpenAIEmbedding(
-            api_key=config.get('openai_api_key'),
-            model=model_name
-        )
+        embed_kwargs = {
+            'api_key': config.get('openai_api_key'),
+            'model': model_name
+        }
+        if embedding_dimension is not None:
+            embed_kwargs['dimensions'] = embedding_dimension
+        return OpenAIEmbedding(**embed_kwargs)
     elif 'HuggingFace' in embedding_model:
         from llama_index.embeddings.huggingface import HuggingFaceEmbedding
         model_name = embedding_model.split('(')[0].strip()
@@ -75,7 +79,10 @@ def get_embed_model(config: Dict):
             model_name=model_name
         )
     else:
-        return OpenAIEmbedding(
-            api_key=config.get('openai_api_key'),
-            model='text-embedding-3-small'
-        )
+        embed_kwargs = {
+            'api_key': config.get('openai_api_key'),
+            'model': 'text-embedding-3-small'
+        }
+        if embedding_dimension is not None:
+            embed_kwargs['dimensions'] = embedding_dimension
+        return OpenAIEmbedding(**embed_kwargs)
