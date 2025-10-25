@@ -49,8 +49,9 @@ st.markdown("Process PDFs from Google Drive using LlamaParse, chunk them, create
 if 'processing_state' not in st.session_state:
     st.session_state.processing_state = None
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "🔑 Configuration", 
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "🔑 Configuration",
+    "📚 Data Sources",
     "📁 Select Files", 
     "⚙️ Processing Settings", 
     "👁️ Preview Chunks",
@@ -142,6 +143,257 @@ with tab1:
         st.success("✅ All required API keys configured!")
 
 with tab2:
+    st.header("Data Sources Management")
+    st.markdown("Manage Google Sheet data sources for different paper topics")
+    
+    from utils.database import (
+        get_data_sources, create_data_source, update_data_source, 
+        delete_data_source, get_column_mappings, save_column_mapping,
+        delete_column_mapping
+    )
+    from utils.google_sheets import load_sheet_data
+    
+    subtab1, subtab2 = st.tabs(["📋 View Sources", "➕ Add/Edit Source"])
+    
+    with subtab1:
+        st.subheader("Existing Data Sources")
+        
+        if st.button("🔄 Refresh Sources"):
+            st.session_state.data_sources = get_data_sources()
+        
+        if 'data_sources' not in st.session_state:
+            st.session_state.data_sources = get_data_sources()
+        
+        sources = st.session_state.data_sources
+        
+        if sources:
+            for source in sources:
+                status_icon = "✅" if source['active'] else "❌"
+                with st.expander(f"{status_icon} {source['name']} - {source.get('topic', 'No topic')}"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.markdown(f"**Sheet URL:** {source['sheet_url'][:50]}...")
+                        st.markdown(f"**Tab:** {source['sheet_tab']}")
+                    with col2:
+                        st.markdown(f"**Namespace:** {source['default_namespace']}")
+                        st.markdown(f"**Active:** {'Yes' if source['active'] else 'No'}")
+                    with col3:
+                        st.markdown(f"**Last Processed:** {source.get('last_processed_at', 'Never')}")
+                        st.markdown(f"**Last Row:** {source.get('last_processed_row', 0)}")
+                    
+                    st.markdown("**Column Mappings:**")
+                    mappings = get_column_mappings(source['id'])
+                    if mappings:
+                        mapping_df = pd.DataFrame([{
+                            'Role': m['column_role'],
+                            'Column': m['column_name'],
+                            'Required': '✓' if m['is_required'] else ''
+                        } for m in mappings])
+                        st.dataframe(mapping_df, use_container_width=True)
+                    else:
+                        st.info("No column mappings configured")
+                    
+                    col_a, col_b, col_c = st.columns(3)
+                    
+                    with col_a:
+                        if st.button(f"Edit", key=f"edit_{source['id']}"):
+                            st.session_state.edit_source_id = source['id']
+                            st.session_state.active_subtab = "Add/Edit Source"
+                            st.rerun()
+                    
+                    with col_b:
+                        active_toggle = st.checkbox(
+                            "Active",
+                            value=source['active'],
+                            key=f"active_{source['id']}"
+                        )
+                        if active_toggle != source['active']:
+                            update_data_source(source['id'], active=active_toggle)
+                            st.success(f"Updated {source['name']}")
+                            st.rerun()
+                    
+                    with col_c:
+                        if st.button(f"Delete", key=f"del_{source['id']}"):
+                            delete_data_source(source['id'])
+                            st.success(f"Deleted {source['name']}")
+                            st.rerun()
+        else:
+            st.info("No data sources configured yet. Add one in the 'Add/Edit Source' tab.")
+    
+    with subtab2:
+        st.subheader("Add or Edit Data Source")
+        
+        edit_mode = 'edit_source_id' in st.session_state
+        editing_source = None
+        
+        if edit_mode:
+            from utils.database import get_data_source
+            editing_source = get_data_source(st.session_state.edit_source_id)
+            if editing_source:
+                st.info(f"Editing: {editing_source['name']}")
+            else:
+                st.error("Source not found")
+                del st.session_state.edit_source_id
+                edit_mode = False
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            source_name = st.text_input(
+                "Source Name",
+                value=editing_source['name'] if (edit_mode and editing_source) else "",
+                help="Unique identifier for this data source"
+            )
+            
+            source_url = st.text_input(
+                "Google Sheet URL",
+                value=editing_source['sheet_url'] if (edit_mode and editing_source) else "",
+                help="Full URL of the Google Sheet"
+            )
+            
+            source_tab = st.text_input(
+                "Sheet Tab Name",
+                value=editing_source['sheet_tab'] if (edit_mode and editing_source) else "Sheet1",
+                help="Which tab/worksheet to use"
+            )
+        
+        with col2:
+            source_topic = st.text_input(
+                "Topic/Category",
+                value=editing_source.get('topic', '') if (edit_mode and editing_source) else "",
+                help="Optional topic or category for organization"
+            )
+            
+            source_namespace = st.text_input(
+                "Default Namespace",
+                value=editing_source['default_namespace'] if (edit_mode and editing_source) else "default",
+                help="Pinecone namespace for this source"
+            )
+        
+        st.markdown("---")
+        st.subheader("Column Mappings")
+        st.markdown("Map your sheet columns to predefined roles")
+        
+        if source_url and st.button("🔍 Auto-Detect Columns"):
+            with st.spinner("Loading sheet columns..."):
+                try:
+                    temp_data = load_sheet_data(source_url, source_tab, st.session_state.get('google_credentials'))
+                    st.session_state.detected_columns = list(temp_data.columns) if temp_data is not None else []
+                    st.success(f"Found {len(st.session_state.detected_columns)} columns")
+                except Exception as e:
+                    st.error(f"Error loading sheet: {str(e)}")
+        
+        available_columns = st.session_state.get('detected_columns', [])
+        
+        if available_columns:
+            st.info(f"Available columns: {', '.join(available_columns)}")
+        
+        COLUMN_ROLES = {
+            'drive_link': 'Drive Link (required)',
+            'paper_title': 'Paper Title',
+            'authors': 'Authors',
+            'publication_year': 'Publication Year',
+            'journal': 'Journal/Conference',
+            'abstract': 'Abstract',
+            'tags': 'Tags/Keywords',
+            'namespace': 'Namespace (overrides default)',
+            'custom_1': 'Custom Field 1',
+            'custom_2': 'Custom Field 2',
+            'custom_3': 'Custom Field 3'
+        }
+        
+        if edit_mode:
+            current_mappings = {m['column_role']: m['column_name'] for m in get_column_mappings(st.session_state.edit_source_id)}
+        else:
+            current_mappings = {}
+        
+        st.session_state.column_mappings_temp = {}
+        
+        for role_key, role_label in COLUMN_ROLES.items():
+            col_map_a, col_map_b = st.columns([2, 1])
+            
+            with col_map_a:
+                column_options = ["None"] + available_columns
+                default_value = current_mappings.get(role_key, "None")
+                
+                if default_value not in column_options and default_value != "None":
+                    column_options.insert(1, default_value)
+                
+                selected = st.selectbox(
+                    role_label,
+                    options=column_options,
+                    index=column_options.index(default_value) if default_value in column_options else 0,
+                    key=f"map_{role_key}"
+                )
+                
+                if selected != "None":
+                    st.session_state.column_mappings_temp[role_key] = selected
+            
+            with col_map_b:
+                if role_key == 'drive_link':
+                    st.checkbox("Required", value=True, disabled=True, key=f"req_{role_key}")
+                else:
+                    st.checkbox("Required", value=False, key=f"req_{role_key}")
+        
+        st.markdown("---")
+        
+        col_save, col_cancel = st.columns(2)
+        
+        with col_save:
+            if st.button("💾 Save Data Source", type="primary", use_container_width=True):
+                if not source_name:
+                    st.error("Please provide a source name")
+                elif not source_url:
+                    st.error("Please provide a Google Sheet URL")
+                elif 'drive_link' not in st.session_state.column_mappings_temp:
+                    st.error("Drive Link column mapping is required")
+                else:
+                    try:
+                        if edit_mode:
+                            update_data_source(
+                                st.session_state.edit_source_id,
+                                name=source_name,
+                                sheet_url=source_url,
+                                sheet_tab=source_tab,
+                                topic=source_topic,
+                                default_namespace=source_namespace
+                            )
+                            source_id = st.session_state.edit_source_id
+                        else:
+                            source_id = create_data_source(
+                                source_name, source_url, source_tab,
+                                source_topic, source_namespace
+                            )
+                        
+                        for role, column in st.session_state.column_mappings_temp.items():
+                            is_req = role == 'drive_link'
+                            save_column_mapping(source_id, role, column, is_req)
+                        
+                        st.success(f"✅ {'Updated' if edit_mode else 'Created'} data source: {source_name}")
+                        
+                        if 'edit_source_id' in st.session_state:
+                            del st.session_state.edit_source_id
+                        if 'detected_columns' in st.session_state:
+                            del st.session_state.detected_columns
+                        if 'column_mappings_temp' in st.session_state:
+                            del st.session_state.column_mappings_temp
+                        
+                        st.session_state.data_sources = get_data_sources()
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Error saving data source: {str(e)}")
+        
+        with col_cancel:
+            if st.button("Cancel", use_container_width=True):
+                if 'edit_source_id' in st.session_state:
+                    del st.session_state.edit_source_id
+                if 'detected_columns' in st.session_state:
+                    del st.session_state.detected_columns
+                st.rerun()
+
+with tab3:
     st.header("Select Files from Google Drive")
     
     col1, col2 = st.columns([2, 1])
