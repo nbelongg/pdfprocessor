@@ -78,9 +78,9 @@ selected_page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📊 Quick Stats")
-from utils.database import get_products, get_all_data_sources
+from utils.database import get_products, get_data_sources
 products = get_products(active_only=True)
-data_sources = get_all_data_sources()
+data_sources = get_data_sources()
 st.sidebar.metric("Active Products", len(products))
 st.sidebar.metric("Data Sources", len(data_sources))
 
