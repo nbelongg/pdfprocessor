@@ -149,11 +149,13 @@ with tab2:
     from utils.database import (
         get_data_sources, create_data_source, update_data_source, 
         delete_data_source, get_column_mappings, save_column_mapping,
-        delete_column_mapping
+        delete_column_mapping, get_all_scheduled_jobs, create_scheduled_job,
+        update_scheduled_job_status, delete_scheduled_job, get_scheduled_job_runs
     )
     from utils.google_sheets import load_sheet_data
+    from datetime import datetime, timedelta
     
-    subtab1, subtab2 = st.tabs(["📋 View Sources", "➕ Add/Edit Source"])
+    subtab1, subtab2, subtab3 = st.tabs(["📋 View Sources", "➕ Add/Edit Source", "⏰ Scheduling"])
     
     with subtab1:
         st.subheader("Existing Data Sources")
@@ -392,6 +394,163 @@ with tab2:
                 if 'detected_columns' in st.session_state:
                     del st.session_state.detected_columns
                 st.rerun()
+    
+    with subtab3:
+        st.subheader("Scheduled Processing")
+        st.markdown("Configure automatic periodic processing for each data source")
+        
+        if 'data_sources' not in st.session_state:
+            st.session_state.data_sources = get_data_sources()
+        
+        sources = st.session_state.data_sources
+        
+        if not sources:
+            st.info("No data sources available. Create a data source first.")
+        else:
+            source_selector = st.selectbox(
+                "Select Data Source to Schedule",
+                options=[s['id'] for s in sources],
+                format_func=lambda x: next((f"{s['name']} - {s.get('topic', 'No topic')}" for s in sources if s['id'] == x), str(x))
+            )
+            
+            if source_selector:
+                selected_source = next((s for s in sources if s['id'] == source_selector), None)
+                existing_schedule = get_scheduled_job(source_selector)
+                
+                st.markdown("---")
+                
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.markdown(f"**Scheduling for:** {selected_source['name']}")
+                    
+                    schedule_enabled = st.checkbox(
+                        "Enable Scheduled Processing",
+                        value=existing_schedule['enabled'] if existing_schedule else False,
+                        key=f"schedule_enabled_{source_selector}"
+                    )
+                    
+                    job_name = st.text_input(
+                        "Job Name",
+                        value=existing_schedule['job_name'] if existing_schedule else f"Auto-process {selected_source['name']}",
+                        help="Descriptive name for this scheduled job"
+                    )
+                    
+                    schedule_type = st.selectbox(
+                        "Schedule Type",
+                        ["hourly", "daily", "weekly", "interval"],
+                        index=["hourly", "daily", "weekly", "interval"].index(existing_schedule['schedule_type']) if existing_schedule else 1
+                    )
+                    
+                    schedule_config = existing_schedule.get('schedule_config', {}) if existing_schedule else {}
+                    
+                    if schedule_type == "daily":
+                        hour = st.number_input(
+                            "Hour (0-23)",
+                            min_value=0,
+                            max_value=23,
+                            value=schedule_config.get('hour', 0)
+                        )
+                        schedule_config['hour'] = hour
+                    
+                    elif schedule_type == "weekly":
+                        day_of_week = st.selectbox(
+                            "Day of Week",
+                            options=[0, 1, 2, 3, 4, 5, 6],
+                            format_func=lambda x: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][x],
+                            index=schedule_config.get('day_of_week', 0)
+                        )
+                        hour = st.number_input(
+                            "Hour (0-23)",
+                            min_value=0,
+                            max_value=23,
+                            value=schedule_config.get('hour', 0)
+                        )
+                        schedule_config['day_of_week'] = day_of_week
+                        schedule_config['hour'] = hour
+                    
+                    elif schedule_type == "interval":
+                        interval_hours = st.number_input(
+                            "Interval (hours)",
+                            min_value=1,
+                            max_value=168,
+                            value=schedule_config.get('interval_hours', 24)
+                        )
+                        schedule_config['interval_hours'] = interval_hours
+                    
+                    max_papers = st.number_input(
+                        "Max Papers per Run",
+                        min_value=1,
+                        max_value=500,
+                        value=schedule_config.get('max_papers_per_run', 100),
+                        help="Maximum number of new papers to process in each scheduled run"
+                    )
+                    schedule_config['max_papers_per_run'] = max_papers
+                    
+                    if st.button("💾 Save Schedule Configuration", type="primary"):
+                        try:
+                            schedule_config['chunking_strategy'] = 'Token-based'
+                            schedule_config['chunk_size'] = 512
+                            schedule_config['embedding_model'] = 'text-embedding-3-small'
+                            schedule_config['index_name'] = 'pdf-embeddings'
+                            
+                            job_id = create_scheduled_job(
+                                source_id=source_selector,
+                                job_name=job_name,
+                                schedule_type=schedule_type,
+                                schedule_config=schedule_config
+                            )
+                            
+                            from scheduler import calculate_next_run
+                            next_run = calculate_next_run(schedule_type, schedule_config, datetime.now())
+                            
+                            from utils.database import update_scheduled_job_run_time
+                            update_scheduled_job_run_time(job_id, next_run)
+                            
+                            if existing_schedule and existing_schedule['enabled'] != schedule_enabled:
+                                update_scheduled_job_status(job_id, schedule_enabled)
+                            
+                            st.success(f"✅ Schedule saved! Next run: {next_run}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving schedule: {str(e)}")
+                
+                with col2:
+                    if existing_schedule:
+                        st.markdown("**Schedule Status**")
+                        st.info(f"**Enabled:** {'Yes' if existing_schedule['enabled'] else 'No'}")
+                        st.info(f"**Type:** {existing_schedule['schedule_type']}")
+                        st.info(f"**Last Run:** {existing_schedule.get('last_run_at', 'Never')}")
+                        st.info(f"**Next Run:** {existing_schedule.get('next_run_at', 'Not scheduled')}")
+                        st.info(f"**Total Runs:** {existing_schedule.get('total_runs', 0)}")
+                        st.info(f"**Successful:** {existing_schedule.get('successful_runs', 0)}")
+                        st.info(f"**Failed:** {existing_schedule.get('failed_runs', 0)}")
+                        
+                        if st.button("🗑️ Delete Schedule"):
+                            delete_scheduled_job(existing_schedule['id'])
+                            st.success("Schedule deleted")
+                            st.rerun()
+                    else:
+                        st.info("No schedule configured for this source")
+                
+                if existing_schedule:
+                    st.markdown("---")
+                    st.subheader("Run History")
+                    
+                    runs = get_scheduled_job_runs(existing_schedule['id'], limit=10)
+                    
+                    if runs:
+                        runs_df = pd.DataFrame([{
+                            'Started': r['run_started_at'],
+                            'Status': r['status'],
+                            'Found': r['papers_found'],
+                            'Processed': r['papers_processed'],
+                            'Duplicates': r['papers_skipped_duplicate'],
+                            'Failed': r['papers_failed']
+                        } for r in runs])
+                        st.dataframe(runs_df, use_container_width=True)
+                    else:
+                        st.info("No runs yet")
 
 with tab3:
     st.header("Select Files to Process")
