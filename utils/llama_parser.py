@@ -3,6 +3,23 @@ from typing import Dict, List, Optional
 import tempfile
 import os
 
+def get_parse_mode(parsing_mode: str) -> str:
+    """
+    Map form value to LlamaParse parse_mode parameter.
+    
+    Args:
+        parsing_mode: Form value ('auto', 'fast', or 'premium')
+        
+    Returns:
+        LlamaParse parse_mode string
+    """
+    mode_mapping = {
+        'auto': 'parse_page_with_llm',
+        'fast': 'parse_page_without_llm',
+        'premium': 'parse_page_with_agent'
+    }
+    return mode_mapping.get(parsing_mode, 'parse_page_with_llm')
+
 def parse_pdf_with_llamaparse(
     pdf_content: bytes,
     filename: str,
@@ -23,13 +40,12 @@ def parse_pdf_with_llamaparse(
     
     parser = LlamaParse(
         api_key=api_key,
+        parse_mode=get_parse_mode(config.get('parsing_mode', 'auto')),
         result_type=config.get('result_type', 'markdown'),
         parsing_instruction=config.get('parsing_instruction', ''),
         language=config.get('language', 'en'),
         use_vendor_multimodal_model=config.get('use_vendor_multimodal', True),
         vendor_multimodal_model_name=config.get('vendor_multimodal_model_name', 'anthropic-sonnet-4'),
-        fast_mode=config.get('parsing_mode', 'auto') == 'fast',
-        premium_mode=config.get('parsing_mode', 'auto') == 'premium',
         page_separator=config.get('page_separator', '\n---\n')
     )
     
