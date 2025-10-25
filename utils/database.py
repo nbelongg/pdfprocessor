@@ -23,10 +23,10 @@ def init_products_table():
                     name VARCHAR(255) UNIQUE NOT NULL,
                     description TEXT,
                     pinecone_index VARCHAR(255) NOT NULL,
-                    llamaparse_api_key_secret VARCHAR(255),
-                    openai_api_key_secret VARCHAR(255),
-                    pinecone_api_key_secret VARCHAR(255),
-                    google_credentials_secret VARCHAR(255),
+                    llamaparse_api_key_secret TEXT,
+                    openai_api_key_secret TEXT,
+                    pinecone_api_key_secret TEXT,
+                    google_credentials_secret TEXT,
                     default_chunking_strategy VARCHAR(50) DEFAULT 'Token-based',
                     default_chunk_size INTEGER DEFAULT 1024,
                     default_embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
@@ -39,7 +39,7 @@ def init_products_table():
             # Add all processing settings columns
             cur.execute("""
                 ALTER TABLE products 
-                ADD COLUMN IF NOT EXISTS google_credentials_secret VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS google_credentials_secret TEXT,
                 ADD COLUMN IF NOT EXISTS parsing_mode VARCHAR(50) DEFAULT 'auto',
                 ADD COLUMN IF NOT EXISTS result_type VARCHAR(50) DEFAULT 'markdown',
                 ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en',
@@ -49,6 +49,15 @@ def init_products_table():
                 ADD COLUMN IF NOT EXISTS semantic_buffer_size INTEGER DEFAULT 1,
                 ADD COLUMN IF NOT EXISTS pinecone_environment VARCHAR(100) DEFAULT 'us-east-1',
                 ADD COLUMN IF NOT EXISTS default_namespace VARCHAR(255) DEFAULT 'default'
+            """)
+            
+            # Migrate existing VARCHAR(255) secret columns to TEXT
+            cur.execute("""
+                ALTER TABLE products 
+                ALTER COLUMN llamaparse_api_key_secret TYPE TEXT,
+                ALTER COLUMN openai_api_key_secret TYPE TEXT,
+                ALTER COLUMN pinecone_api_key_secret TYPE TEXT,
+                ALTER COLUMN google_credentials_secret TYPE TEXT
             """)
             
             # Add product_id to data_sources if not exists
