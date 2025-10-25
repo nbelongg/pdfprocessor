@@ -10,16 +10,32 @@ def get_redis_url():
     """
     Get Redis connection URL from environment variables.
     Supports both Upstash Redis (TLS) and local Redis.
+    Handles cases where REDIS_HOST contains a full CLI command or just the hostname.
     """
-    redis_host = os.getenv('REDIS_HOST', 'localhost')
+    import re
+    
+    redis_host_raw = os.getenv('REDIS_HOST', 'localhost')
     redis_port = os.getenv('REDIS_PORT', '6379')
     redis_password = os.getenv('REDIS_PASSWORD', '')
     redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
     
+    if 'redis://' in redis_host_raw or 'rediss://' in redis_host_raw:
+        match = re.search(r'redis(?:s)?://(?:default:)?([^@]+)@([^:]+):(\d+)', redis_host_raw)
+        if match:
+            redis_password = match.group(1)
+            redis_host = match.group(2)
+            redis_port = match.group(3)
+            if 'rediss://' in redis_host_raw:
+                redis_use_tls = True
+        else:
+            redis_host = 'localhost'
+    else:
+        redis_host = redis_host_raw
+    
     if redis_use_tls and redis_password:
-        connection_url = f"rediss://:{redis_password}@{redis_host}:{redis_port}/0?ssl_cert_reqs=required"
+        connection_url = f"rediss://default:{redis_password}@{redis_host}:{redis_port}?ssl_cert_reqs=required"
     elif redis_password:
-        connection_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/0"
+        connection_url = f"redis://default:{redis_password}@{redis_host}:{redis_port}/0"
     else:
         connection_url = f"redis://{redis_host}:{redis_port}/0"
     
