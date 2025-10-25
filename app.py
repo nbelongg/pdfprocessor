@@ -70,7 +70,6 @@ selected_page = st.sidebar.radio(
         "🏢 Products",
         "📚 Data Sources",
         "📁 Select Files", 
-        "⚙️ Processing Settings", 
         "👁️ Preview Chunks",
         "🚀 Process & Upload",
         "📊 Status",
@@ -211,9 +210,29 @@ elif selected_page == "🏢 Products":
                         st.markdown(f"**Pinecone Secret:** `{product.get('pinecone_api_key_secret', 'Not set')}`")
                         st.markdown(f"**Google Credentials Secret:** `{product.get('google_credentials_secret', 'Not set')}`")
                     
-                    st.markdown("**Default Settings:**")
-                    st.markdown(f"- Chunking: {product.get('default_chunking_strategy', 'N/A')} (size: {product.get('default_chunk_size', 'N/A')})")
-                    st.markdown(f"- Embedding: {product.get('default_embedding_model', 'N/A')}")
+                    st.markdown("**Processing Settings:**")
+                    
+                    settings_col1, settings_col2 = st.columns(2)
+                    with settings_col1:
+                        st.markdown("*Parsing:*")
+                        st.markdown(f"- Mode: {product.get('parsing_mode', 'auto')}")
+                        st.markdown(f"- Result Type: {product.get('result_type', 'markdown')}")
+                        st.markdown(f"- Language: {product.get('language', 'en')}")
+                        st.markdown(f"- Multimodal: {product.get('use_vendor_multimodal', True)}")
+                        
+                        st.markdown("*Chunking:*")
+                        st.markdown(f"- Strategy: {product.get('default_chunking_strategy', 'N/A')}")
+                        st.markdown(f"- Size: {product.get('default_chunk_size', 'N/A')}")
+                        st.markdown(f"- Overlap: {product.get('chunk_overlap', 200)}")
+                        st.markdown(f"- Semantic Buffer: {product.get('semantic_buffer_size', 1)}")
+                    
+                    with settings_col2:
+                        st.markdown("*Embedding:*")
+                        st.markdown(f"- Model: {product.get('default_embedding_model', 'N/A')}")
+                        
+                        st.markdown("*Pinecone:*")
+                        st.markdown(f"- Environment: {product.get('pinecone_environment', 'us-east-1')}")
+                        st.markdown(f"- Namespace: {product.get('default_namespace', 'default')}")
                     
                     col_edit, col_delete, col_toggle = st.columns(3)
                     with col_edit:
@@ -294,30 +313,105 @@ elif selected_page == "🏢 Products":
             help="Name of the Replit secret containing the Google service account JSON (as a string)"
         )
         
-        st.markdown("### Default Processing Settings")
+        st.markdown("### Processing Settings")
+        st.info("💡 These settings control how PDFs are parsed, chunked, and embedded for this product")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            chunking_strategy = st.selectbox(
-                "Default Chunking Strategy",
-                ["Token-based", "Sentence-based", "Semantic"],
-                index=["Token-based", "Sentence-based", "Semantic"].index(product_to_edit.get('default_chunking_strategy', 'Token-based')) if edit_mode else 0
-            )
+        with st.expander("🔍 Parsing Settings", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                parsing_mode = st.selectbox(
+                    "Parsing Mode",
+                    ["auto", "fast", "premium"],
+                    index=["auto", "fast", "premium"].index(product_to_edit.get('parsing_mode', 'auto')) if edit_mode else 0,
+                    help="LlamaParse parsing quality mode"
+                )
+                
+                result_type = st.selectbox(
+                    "Result Type",
+                    ["markdown", "text"],
+                    index=["markdown", "text"].index(product_to_edit.get('result_type', 'markdown')) if edit_mode else 0,
+                    help="Output format from LlamaParse"
+                )
             
-            chunk_size = st.number_input(
-                "Default Chunk Size",
-                min_value=128,
-                max_value=2048,
-                value=product_to_edit.get('default_chunk_size', 512) if edit_mode else 512,
-                step=128
+            with col2:
+                language = st.text_input(
+                    "Language Code",
+                    value=product_to_edit.get('language', 'en') if edit_mode else 'en',
+                    help="ISO language code (e.g., 'en', 'es', 'fr')"
+                )
+                
+                use_vendor_multimodal = st.checkbox(
+                    "Use Vendor Multimodal",
+                    value=product_to_edit.get('use_vendor_multimodal', True) if edit_mode else True,
+                    help="Enable multimodal parsing for images/tables"
+                )
+            
+            page_separator = st.text_input(
+                "Page Separator",
+                value=product_to_edit.get('page_separator', '\n---\n') if edit_mode else '\n---\n',
+                help="String used to separate pages in parsed output"
             )
         
-        with col2:
+        with st.expander("✂️ Chunking Settings", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                chunking_strategy = st.selectbox(
+                    "Chunking Strategy",
+                    ["Token-based", "Sentence-based", "Semantic"],
+                    index=["Token-based", "Sentence-based", "Semantic"].index(product_to_edit.get('default_chunking_strategy', 'Token-based')) if edit_mode else 0,
+                    help="How to split text into chunks"
+                )
+                
+                chunk_size = st.number_input(
+                    "Chunk Size",
+                    min_value=128,
+                    max_value=4096,
+                    value=product_to_edit.get('default_chunk_size', 1024) if edit_mode else 1024,
+                    step=128,
+                    help="Maximum size of each chunk (tokens or characters)"
+                )
+            
+            with col2:
+                chunk_overlap = st.number_input(
+                    "Chunk Overlap",
+                    min_value=0,
+                    max_value=512,
+                    value=product_to_edit.get('chunk_overlap', 200) if edit_mode else 200,
+                    step=50,
+                    help="Number of tokens/characters to overlap between chunks"
+                )
+                
+                semantic_buffer_size = st.number_input(
+                    "Semantic Buffer Size",
+                    min_value=1,
+                    max_value=5,
+                    value=product_to_edit.get('semantic_buffer_size', 1) if edit_mode else 1,
+                    help="Buffer size for semantic chunking (only used if strategy is Semantic)"
+                )
+        
+        with st.expander("🧮 Embedding Settings", expanded=True):
             embedding_model = st.selectbox(
-                "Default Embedding Model",
-                ["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"],
-                index=["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if edit_mode and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"] else 0
+                "Embedding Model",
+                ["text-embedding-3-small", "text-embedding-3-large"],
+                index=["text-embedding-3-small", "text-embedding-3-large"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if edit_mode and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large"] else 0,
+                help="OpenAI embedding model to use"
             )
+        
+        with st.expander("📍 Pinecone Settings", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                pinecone_environment = st.text_input(
+                    "Pinecone Environment",
+                    value=product_to_edit.get('pinecone_environment', 'us-east-1') if edit_mode else 'us-east-1',
+                    help="Pinecone serverless region (e.g., 'us-east-1')"
+                )
+            
+            with col2:
+                default_namespace = st.text_input(
+                    "Default Namespace",
+                    value=product_to_edit.get('default_namespace', 'default') if edit_mode else 'default',
+                    help="Default namespace for vectors in Pinecone"
+                )
         
         col_save, col_cancel = st.columns(2)
         
@@ -339,7 +433,16 @@ elif selected_page == "🏢 Products":
                                 google_credentials_secret=google_credentials_secret,
                                 chunking_strategy=chunking_strategy,
                                 chunk_size=chunk_size,
-                                embedding_model=embedding_model
+                                chunk_overlap=chunk_overlap,
+                                embedding_model=embedding_model,
+                                parsing_mode=parsing_mode,
+                                result_type=result_type,
+                                language=language,
+                                use_vendor_multimodal=use_vendor_multimodal,
+                                page_separator=page_separator,
+                                semantic_buffer_size=semantic_buffer_size,
+                                pinecone_environment=pinecone_environment,
+                                default_namespace=default_namespace
                             )
                         else:
                             create_product(
@@ -352,7 +455,16 @@ elif selected_page == "🏢 Products":
                                 google_credentials_secret=google_credentials_secret,
                                 chunking_strategy=chunking_strategy,
                                 chunk_size=chunk_size,
-                                embedding_model=embedding_model
+                                chunk_overlap=chunk_overlap,
+                                embedding_model=embedding_model,
+                                parsing_mode=parsing_mode,
+                                result_type=result_type,
+                                language=language,
+                                use_vendor_multimodal=use_vendor_multimodal,
+                                page_separator=page_separator,
+                                semantic_buffer_size=semantic_buffer_size,
+                                pinecone_environment=pinecone_environment,
+                                default_namespace=default_namespace
                             )
                         
                         st.success(f"✅ {'Updated' if edit_mode else 'Created'} product: {product_name}")
@@ -925,187 +1037,6 @@ elif selected_page == "📁 Select Files":
                             st.error(f"Drive link column '{drive_link_col}' not found")
                     else:
                         st.info("Click 'Load' to fetch papers from this source")
-
-elif selected_page == "⚙️ Processing Settings":
-    st.header("Processing Settings")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🔍 LlamaParse Settings")
-        
-        parsing_mode = st.selectbox(
-            "Parsing Mode",
-            ["auto", "fast", "premium"],
-            help="auto: Automatic selection, fast: Quick parsing, premium: High quality"
-        )
-        st.session_state.parsing_mode = parsing_mode
-        
-        result_type = st.selectbox(
-            "Result Type",
-            ["markdown", "text"],
-            help="Output format from LlamaParse"
-        )
-        st.session_state.result_type = result_type
-        
-        language = st.text_input(
-            "Language",
-            value="en",
-            help="Language code (e.g., en, es, fr)"
-        )
-        st.session_state.language = language
-        
-        use_vendor_multimodal = st.checkbox(
-            "Use Vendor Multimodal Model",
-            value=True,
-            help="Enable for better handling of images and tables"
-        )
-        st.session_state.use_vendor_multimodal = use_vendor_multimodal
-        
-        page_separator = st.text_input(
-            "Page Separator",
-            value="\\n---\\n",
-            help="Separator between pages in output"
-        )
-        st.session_state.page_separator = page_separator
-        
-        st.subheader("🔪 Chunking Strategy")
-        
-        chunking_strategy = st.selectbox(
-            "Strategy",
-            ["Token-based", "Sentence-based", "Semantic"],
-            help="How to split documents into chunks"
-        )
-        st.session_state.chunking_strategy = chunking_strategy
-        
-        if chunking_strategy == "Token-based":
-            chunk_size = st.slider(
-                "Chunk Size (tokens)",
-                min_value=128,
-                max_value=2048,
-                value=1024,
-                step=128,
-                help="Number of tokens per chunk (LlamaIndex default: 1024)"
-            )
-            chunk_overlap = st.slider(
-                "Chunk Overlap (tokens)",
-                min_value=0,
-                max_value=512,
-                value=200,
-                step=50,
-                help="Token overlap between chunks to preserve context (LlamaIndex default: 200)"
-            )
-            st.session_state.chunk_size = chunk_size
-            st.session_state.chunk_overlap = chunk_overlap
-        
-        elif chunking_strategy == "Sentence-based":
-            chunk_size = st.slider(
-                "Chunk Size (characters)",
-                min_value=256,
-                max_value=4096,
-                value=1024,
-                step=128,
-                help="Maximum size of each chunk"
-            )
-            chunk_overlap = st.slider(
-                "Chunk Overlap (characters)",
-                min_value=0,
-                max_value=512,
-                value=200,
-                step=50,
-                help="Overlap between consecutive chunks"
-            )
-            st.session_state.chunk_size = chunk_size
-            st.session_state.chunk_overlap = chunk_overlap
-        
-        elif chunking_strategy == "Semantic":
-            st.info("Semantic chunking uses AI to identify natural breakpoints")
-            buffer_size = st.slider(
-                "Buffer Size",
-                min_value=1,
-                max_value=5,
-                value=1,
-                step=1,
-                help="Number of sentences to consider for semantic boundaries"
-            )
-            st.session_state.semantic_buffer_size = buffer_size
-    
-    with col2:
-        st.subheader("🧠 Embedding Settings")
-        
-        embedding_model_choice = st.selectbox(
-            "Embedding Model",
-            [
-                "text-embedding-3-small (OpenAI) ⭐ Recommended",
-                "text-embedding-3-large (OpenAI)",
-                "text-embedding-ada-002 (OpenAI)"
-            ],
-            help="OpenAI embeddings are optimized for deployment size. HuggingFace models require additional dependencies."
-        )
-        st.session_state.embedding_model = embedding_model_choice
-        
-        if "text-embedding-3-large" in embedding_model_choice:
-            default_dimension = 3072
-        else:
-            default_dimension = 1536
-        
-        embedding_dimension = st.number_input(
-            "Embedding Dimension",
-            min_value=128,
-            max_value=3072,
-            value=default_dimension,
-            help="Dimension of embedding vectors (text-embedding-3-small/ada-002: 1536, text-embedding-3-large: 3072)",
-            disabled=True
-        )
-        st.session_state.embedding_dimension = embedding_dimension
-        
-        st.subheader("📍 Pinecone Settings")
-        
-        pinecone_environment = st.text_input(
-            "Pinecone Environment",
-            value=st.session_state.get('pinecone_environment', 'us-east-1'),
-            help="Pinecone environment/region (serverless: us-east-1, us-west-2, etc. | pods: gcp-starter)"
-        )
-        st.session_state.pinecone_environment = pinecone_environment
-        
-        index_name = st.text_input(
-            "Index Name",
-            value=st.session_state.get('index_name', 'research-papers'),
-            help="Pinecone index name"
-        )
-        st.session_state.index_name = index_name
-        
-        default_namespace = st.text_input(
-            "Default Namespace",
-            value=st.session_state.get('default_namespace', 'default'),
-            help="Default namespace (can be overridden by sheet metadata)"
-        )
-        st.session_state.default_namespace = default_namespace
-        
-        st.subheader("🏷️ Metadata Mapping")
-        
-        st.markdown("**Columns to include as metadata:**")
-        
-        if 'sheet_data' in st.session_state:
-            available_columns = [col for col in st.session_state.sheet_data.columns 
-                               if col != st.session_state.get('drive_link_column', '')]
-            
-            metadata_columns = st.multiselect(
-                "Select metadata columns",
-                options=available_columns,
-                default=available_columns[:5] if len(available_columns) >= 5 else available_columns,
-                help="Choose which columns to attach as metadata to chunks"
-            )
-            st.session_state.metadata_columns = metadata_columns
-            
-            namespace_column = st.selectbox(
-                "Namespace Column (optional)",
-                options=["None"] + available_columns,
-                help="Column to use for Pinecone namespace (overrides default)"
-            )
-            st.session_state.namespace_column = None if namespace_column == "None" else namespace_column
-        else:
-            st.info("Note: Metadata is now configured per data source in the Data Sources tab")
 
 elif selected_page == "👁️ Preview Chunks":
     st.header("Preview Chunks")
