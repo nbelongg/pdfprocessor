@@ -119,6 +119,7 @@ def process_multi_source_pipeline(
                 
                 # Use product-specific embedding settings
                 product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
+                product_config['embedding_dimension'] = product_info.get('embedding_dimension')
                 
                 # Initialize product-specific Pinecone index if not already done
                 if not preview_mode and product_index is None:

@@ -239,6 +239,7 @@ def process_batch_task(
                 product_config['chunk_overlap'] = product_info.get('chunk_overlap', 50)
                 product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
                 product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
+                product_config['embedding_dimension'] = product_info.get('embedding_dimension')
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
