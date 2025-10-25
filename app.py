@@ -258,10 +258,12 @@ elif selected_page == "🏢 Products":
         st.subheader("Add or Edit Product")
         
         edit_mode = 'edit_product_id' in st.session_state
+        product_to_edit = None
         
         if edit_mode:
             product_to_edit = get_product(st.session_state.edit_product_id)
-            st.info(f"Editing: {product_to_edit['name']}")
+            if product_to_edit:
+                st.info(f"Editing: {product_to_edit['name']}")
         
         product_name = st.text_input(
             "Product/Startup Name",

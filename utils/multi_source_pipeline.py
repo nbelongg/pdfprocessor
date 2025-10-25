@@ -99,16 +99,26 @@ def process_multi_source_pipeline(
                 if product_api_keys.get('GOOGLE_CREDENTIALS'):
                     product_config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
                 
-                # Use product-specific Pinecone index
+                # Use product-specific Pinecone index and settings
                 product_config['index_name'] = product_info['pinecone_index']
+                product_config['pinecone_environment'] = product_info.get('pinecone_environment', 'us-east-1')
+                product_config['default_namespace'] = product_info.get('default_namespace', 'default')
                 
-                # Use product-specific default settings if not overridden
-                if 'chunking_strategy' not in config or config['chunking_strategy'] == 'Token-based':
-                    product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
-                if 'chunk_size' not in config or config['chunk_size'] == 512:
-                    product_config['chunk_size'] = product_info.get('default_chunk_size', 512)
-                if 'embedding_model' not in config or config['embedding_model'] == 'text-embedding-3-small':
-                    product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
+                # Use product-specific parsing settings
+                product_config['parsing_mode'] = product_info.get('parsing_mode', 'auto')
+                product_config['result_type'] = product_info.get('result_type', 'markdown')
+                product_config['language'] = product_info.get('language', 'en')
+                product_config['use_vendor_multimodal'] = product_info.get('use_vendor_multimodal', True)
+                product_config['page_separator'] = product_info.get('page_separator', '\n---\n')
+                
+                # Use product-specific chunking settings
+                product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
+                product_config['chunk_size'] = product_info.get('default_chunk_size', 1024)
+                product_config['chunk_overlap'] = product_info.get('chunk_overlap', 200)
+                product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
+                
+                # Use product-specific embedding settings
+                product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
                 
                 # Initialize product-specific Pinecone index if not already done
                 if not preview_mode and product_index is None:
@@ -208,8 +218,8 @@ def process_multi_source_pipeline(
                         f"Downloading PDF from {source_info['name']}..."
                     )
                 
-                pdf_content = download_pdf_from_drive(file_id, config['google_credentials'])
-                file_metadata = get_file_metadata(file_id, config['google_credentials'])
+                pdf_content = download_pdf_from_drive(file_id, product_config['google_credentials'])
+                file_metadata = get_file_metadata(file_id, product_config['google_credentials'])
                 
                 if progress_callback:
                     progress_callback(
