@@ -167,12 +167,15 @@ def process_pdf_task(
         print(error_msg)
         print(traceback.format_exc())
         
-        return {
-            'status': 'error',
-            'file_id': file_id,
-            'filename': filename,
-            'error': str(e)
-        }
+        try:
+            raise self.retry(exc=e, countdown=60, max_retries=3)
+        except self.MaxRetriesExceededError:
+            return {
+                'status': 'error',
+                'file_id': file_id,
+                'filename': filename,
+                'error': f"Max retries exceeded: {str(e)}"
+            }
 
 
 @celery_app.task(bind=True, base=CallbackTask, name='tasks.process_batch_task')
@@ -305,8 +308,11 @@ def process_batch_task(
         if not preview_mode:
             update_job_status(job_id, 'error')
         
-        return {
-            'status': 'error',
-            'job_id': job_id,
-            'error': str(e)
-        }
+        try:
+            raise self.retry(exc=e, countdown=60, max_retries=3)
+        except self.MaxRetriesExceededError:
+            return {
+                'status': 'error',
+                'job_id': job_id,
+                'error': f"Max retries exceeded: {str(e)}"
+            }

@@ -81,9 +81,9 @@ def create_processing_job(job_id: str, config: Dict) -> int:
                     Json(config)
                 )
             )
-            result = cur.execute("SELECT lastval()").fetchone()
+            result = cur.fetchone()
             conn.commit()
-            return result['lastval'] if result else None
+            return result['id'] if result else None
     finally:
         conn.close()
 
