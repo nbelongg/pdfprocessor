@@ -26,6 +26,7 @@ def init_products_table():
                     llamaparse_api_key_secret VARCHAR(255),
                     openai_api_key_secret VARCHAR(255),
                     pinecone_api_key_secret VARCHAR(255),
+                    google_credentials_secret VARCHAR(255),
                     default_chunking_strategy VARCHAR(50) DEFAULT 'Token-based',
                     default_chunk_size INTEGER DEFAULT 512,
                     default_embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
@@ -33,6 +34,12 @@ def init_products_table():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Add google_credentials_secret column if not exists
+            cur.execute("""
+                ALTER TABLE products 
+                ADD COLUMN IF NOT EXISTS google_credentials_secret VARCHAR(255)
             """)
             
             # Add product_id to data_sources if not exists
@@ -745,6 +752,7 @@ def create_product(
     llamaparse_secret: str = None,
     openai_secret: str = None,
     pinecone_secret: str = None,
+    google_credentials_secret: str = None,
     chunking_strategy: str = 'Token-based',
     chunk_size: int = 512,
     embedding_model: str = 'text-embedding-3-small'
@@ -757,13 +765,13 @@ def create_product(
                 """
                 INSERT INTO products 
                 (name, description, pinecone_index, llamaparse_api_key_secret,
-                 openai_api_key_secret, pinecone_api_key_secret,
+                 openai_api_key_secret, pinecone_api_key_secret, google_credentials_secret,
                  default_chunking_strategy, default_chunk_size, default_embedding_model)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (name, description, pinecone_index, llamaparse_secret, openai_secret,
-                 pinecone_secret, chunking_strategy, chunk_size, embedding_model)
+                 pinecone_secret, google_credentials_secret, chunking_strategy, chunk_size, embedding_model)
             )
             result = cur.fetchone()
             conn.commit()
@@ -779,6 +787,7 @@ def update_product(
     llamaparse_secret: str = None,
     openai_secret: str = None,
     pinecone_secret: str = None,
+    google_credentials_secret: str = None,
     chunking_strategy: str = None,
     chunk_size: int = None,
     embedding_model: str = None,
@@ -809,6 +818,9 @@ def update_product(
             if pinecone_secret is not None:
                 set_clauses.append("pinecone_api_key_secret = %s")
                 values.append(pinecone_secret)
+            if google_credentials_secret is not None:
+                set_clauses.append("google_credentials_secret = %s")
+                values.append(google_credentials_secret)
             if chunking_strategy is not None:
                 set_clauses.append("default_chunking_strategy = %s")
                 values.append(chunking_strategy)
@@ -842,8 +854,8 @@ def delete_product(product_id: int):
     finally:
         conn.close()
 
-def get_product_api_keys(product_id: int) -> Dict[str, str]:
-    """Get API keys for a product from environment variables."""
+def get_product_api_keys(product_id: int) -> Dict:
+    """Get API keys and credentials for a product from environment variables."""
     product = get_product(product_id)
     if not product:
         return {}
@@ -858,5 +870,13 @@ def get_product_api_keys(product_id: int) -> Dict[str, str]:
     
     if product.get('pinecone_api_key_secret'):
         api_keys['PINECONE_API_KEY'] = os.getenv(product['pinecone_api_key_secret'], '')
+    
+    if product.get('google_credentials_secret'):
+        google_creds_json = os.getenv(product['google_credentials_secret'], '')
+        if google_creds_json:
+            try:
+                api_keys['GOOGLE_CREDENTIALS'] = json.loads(google_creds_json)
+            except json.JSONDecodeError:
+                api_keys['GOOGLE_CREDENTIALS'] = None
     
     return api_keys
