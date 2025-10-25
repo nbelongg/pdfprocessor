@@ -18,7 +18,7 @@ Preferred communication style: Simple, everyday language.
 2.  **PDF Acquisition**: Google Drive API for downloading PDFs.
 3.  **Parsing Layer**: LlamaParse for converting PDFs to structured text (markdown/text), with configurable modes and custom instructions.
 4.  **Chunking Layer**: Multiple strategies including token-based (`TokenTextSplitter`), sentence-based (`SentenceSplitter`), and semantic (`SemanticSplitterNodeParser`).
-5.  **Embedding Layer**: Supports OpenAI (text-embedding-3-small, text-embedding-3-large) and HuggingFace models.
+5.  **Embedding Layer**: OpenAI embeddings only (text-embedding-3-small, text-embedding-3-large). HuggingFace removed for deployment optimization.
 6.  **Storage Layer**: Pinecone vector database (serverless, AWS us-east-1, cosine similarity) for vector storage, with namespace support and batch upsert.
 
 ### Configuration & Data Flow
@@ -36,7 +36,9 @@ Preferred communication style: Simple, everyday language.
 -   **Multi-Product/Multi-Startup Support**: Management of multiple products/startups with separate Pinecone indexes, API keys (via Replit secrets), and processing settings.
 
 ### UI/UX Decisions
--   Application structured with multiple tabs (`app.py`, `app_transformations.py`) for different functionalities like data source management, processing, preview, and history.
+-   **Navigation**: Left sidebar with radio buttons for page selection (Configuration, Products, Data Sources, Select Files, Preview Chunks, Process & Upload, Status, History, Search Test)
+-   **Processing Settings**: All processing settings moved to product-specific configuration (no global Processing Settings page)
+-   **Products Tab**: Organized into collapsible sections (Parsing, Chunking, Embedding, Pinecone Settings) for better UX when creating/editing products
 
 ## External Dependencies
 
@@ -52,7 +54,6 @@ Preferred communication style: Simple, everyday language.
 1.  **LlamaIndex**: Document processing, node parsing, embedding generation.
 2.  **Streamlit**: Web application framework.
 3.  **Google API Clients** (`google-api-python-client`, `oauth2client`, `gspread`): Google Drive and Sheets access.
-4.  **HuggingFace**: Alternative embedding model provider.
 
 ### Data Storage
 -   **Pinecone**: Primary vector storage.
@@ -67,13 +68,16 @@ The application supports managing multiple products/startups with complete isola
 ### Product Configuration
 Each product in the database stores:
 - **Name & Description**: Product identifier and description
-- **Pinecone Index**: Dedicated index for vector storage
+- **Pinecone Configuration**: Dedicated index name, environment (serverless region), and default namespace
 - **API Key Secret Names**: References to Replit secrets containing:
   - LlamaParse API key
   - OpenAI API key (if using OpenAI embeddings)
   - Pinecone API key
   - Google service account JSON credentials
-- **Default Settings**: Chunking strategy, chunk size, embedding model
+- **Complete Processing Settings** (all settings are product-specific):
+  - **Parsing Settings**: Mode (auto/fast/premium), result type (markdown/text), language, multimodal support, page separator
+  - **Chunking Settings**: Strategy (token/sentence/semantic), chunk size, chunk overlap, semantic buffer size
+  - **Embedding Settings**: Model (OpenAI text-embedding-3-small/large)
 - **Status**: Active/inactive flag
 
 ### Secret Management
@@ -95,13 +99,16 @@ Products use a **secret reference system** for security:
 ### Integration with Pipeline
 When processing PDFs:
 1. Data source specifies which product it belongs to
-2. Pipeline loads product configuration
-3. Product-specific settings override global configuration:
-   - API keys from product secrets
-   - Google credentials from product secret
-   - Pinecone index from product config
-   - Default chunking/embedding settings from product
-4. Vectors stored in product-specific Pinecone index
+2. Pipeline loads complete product configuration including:
+   - **All API keys** from product-specific Replit secrets
+   - **Google Drive credentials** from product secret (enables per-product Drive access)
+   - **Pinecone configuration**: Index name, environment, default namespace
+   - **All parsing settings**: Mode, result type, language, multimodal, page separator
+   - **All chunking settings**: Strategy, size, overlap, semantic buffer
+   - **Embedding model**: OpenAI model selection
+3. Product settings take precedence over any global/base configuration
+4. Pipeline functions (PDF download, parsing, chunking, embedding) all use product-specific config
+5. Vectors stored in product-specific Pinecone index with product settings
 
 ### Integration with Scheduler
 Scheduled jobs automatically use product settings:
