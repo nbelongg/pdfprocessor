@@ -20,13 +20,17 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
         List of embedding vectors
     """
     embedding_model = config.get('embedding_model', '')
+    embedding_dimension = config.get('embedding_dimension')
     
     if 'OpenAI' in embedding_model:
         model_name = embedding_model.split('(')[0].strip()
-        embed_model = OpenAIEmbedding(
-            api_key=config.get('openai_api_key'),
-            model=model_name
-        )
+        embed_kwargs = {
+            'api_key': config.get('openai_api_key'),
+            'model': model_name
+        }
+        if embedding_dimension is not None:
+            embed_kwargs['dimensions'] = embedding_dimension
+        embed_model = OpenAIEmbedding(**embed_kwargs)
     elif 'HuggingFace' in embedding_model:
         from llama_index.embeddings.huggingface import HuggingFaceEmbedding
         model_name = embedding_model.split('(')[0].strip()
@@ -34,10 +38,13 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
             model_name=model_name
         )
     else:
-        embed_model = OpenAIEmbedding(
-            api_key=config.get('openai_api_key'),
-            model='text-embedding-3-small'
-        )
+        embed_kwargs = {
+            'api_key': config.get('openai_api_key'),
+            'model': 'text-embedding-3-small'
+        }
+        if embedding_dimension is not None:
+            embed_kwargs['dimensions'] = embedding_dimension
+        embed_model = OpenAIEmbedding(**embed_kwargs)
     
     embeddings = []
     for node in nodes:
@@ -47,7 +54,12 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
     return embeddings
 
 def get_embedding_dimension(config: Dict) -> int:
-    """Get the dimension of embeddings based on the model."""
+    """Get the dimension of embeddings based on the model and config."""
+    # Check if custom dimension is set first
+    if config.get('embedding_dimension') is not None:
+        return config.get('embedding_dimension')
+    
+    # Otherwise use default dimensions based on model
     embedding_model = config.get('embedding_model', '')
     
     dimension_map = {
@@ -63,4 +75,4 @@ def get_embedding_dimension(config: Dict) -> int:
         if model_key in embedding_model:
             return dim
     
-    return config.get('embedding_dimension', 1536)
+    return 1536
