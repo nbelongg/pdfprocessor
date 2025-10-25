@@ -49,28 +49,43 @@ st.markdown("Process PDFs from Google Drive using LlamaParse, chunk them, create
 if 'processing_state' not in st.session_state:
     st.session_state.processing_state = None
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
-    "🔑 Configuration",
-    "🏢 Products",
-    "📚 Data Sources",
-    "📁 Select Files", 
-    "⚙️ Processing Settings", 
-    "👁️ Preview Chunks",
-    "🚀 Process & Upload",
-    "📊 Status",
-    "📜 History",
-    "🔍 Search Test"
-])
-
 # Initialize database tables
 from utils.database import init_products_table
 
 try:
     init_products_table()
 except Exception as e:
-    st.sidebar.warning(f"Products table initialization: {str(e)}")
+    st.error(f"Products table initialization: {str(e)}")
 
-with tab1:
+# Sidebar Navigation
+st.sidebar.title("📑 Navigation")
+selected_page = st.sidebar.radio(
+    "Select a page:",
+    [
+        "🔑 Configuration",
+        "🏢 Products",
+        "📚 Data Sources",
+        "📁 Select Files", 
+        "⚙️ Processing Settings", 
+        "👁️ Preview Chunks",
+        "🚀 Process & Upload",
+        "📊 Status",
+        "📜 History",
+        "🔍 Search Test"
+    ],
+    label_visibility="collapsed"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📊 Quick Stats")
+from utils.database import get_products, get_all_data_sources
+products = get_products(active_only=True)
+data_sources = get_all_data_sources()
+st.sidebar.metric("Active Products", len(products))
+st.sidebar.metric("Data Sources", len(data_sources))
+
+# Page Content
+if selected_page == "🔑 Configuration":
     st.header("🏢 Product-Based Configuration")
     
     st.info("""
@@ -154,7 +169,7 @@ Then in the Products tab:
 - Google Credentials Secret Name: STARTUP_A_GOOGLE_CREDS
         """, language="text")
 
-with tab2:
+elif selected_page == "🏢 Products":
     st.header("Product Management")
     st.markdown("Manage products/startups with separate Pinecone indexes and API keys")
     
@@ -353,7 +368,7 @@ with tab2:
                     del st.session_state.edit_product_id
                 st.rerun()
 
-with tab3:
+elif selected_page == "📚 Data Sources":
     st.header("Data Sources Management")
     st.markdown("Manage Google Sheet data sources for different paper topics")
     
@@ -781,7 +796,7 @@ with tab3:
                     else:
                         st.info("No runs yet")
 
-with tab3:
+elif selected_page == "📁 Select Files":
     st.header("Select Files to Process")
     st.markdown("Choose which data sources and papers to process")
     
@@ -907,7 +922,7 @@ with tab3:
                     else:
                         st.info("Click 'Load' to fetch papers from this source")
 
-with tab4:
+elif selected_page == "⚙️ Processing Settings":
     st.header("Processing Settings")
     
     col1, col2 = st.columns(2)
@@ -1083,7 +1098,7 @@ with tab4:
         else:
             st.info("Note: Metadata is now configured per data source in the Data Sources tab")
 
-with tab5:
+elif selected_page == "👁️ Preview Chunks":
     st.header("Preview Chunks")
     st.markdown("Preview how your papers will be chunked before uploading to Pinecone")
     
@@ -1195,7 +1210,7 @@ with tab5:
             else:
                 st.info("Click 'Generate Preview' to see chunks")
 
-with tab6:
+elif selected_page == "🚀 Process & Upload":
     st.header("Process & Upload to Pinecone")
     
     selected_source_ids = st.session_state.get('selected_source_ids', [])
@@ -1284,7 +1299,7 @@ with tab6:
                 st.error(f"❌ Error during processing: {str(e)}")
                 st.exception(e)
 
-with tab7:
+elif selected_page == "📊 Status":
     st.header("Processing Status & Logs")
     
     if st.session_state.processing_state == "running":
@@ -1317,7 +1332,7 @@ with tab7:
     else:
         st.info("👆 Configure settings and start processing to see status here")
 
-with tab7:
+elif selected_page == "📜 History":
     st.header("Processing History")
     st.markdown("View past processing jobs and their results")
     
@@ -1375,7 +1390,7 @@ with tab7:
     else:
         st.info("No processing history found")
 
-with tab8:
+elif selected_page == "🔍 Search Test":
     st.header("Vector Search Testing")
     st.markdown("Query your Pinecone index to test stored embeddings")
     
