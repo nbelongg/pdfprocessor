@@ -15,7 +15,9 @@ from utils.database import (
     update_scheduled_job_run_time,
     record_scheduled_job_run,
     update_scheduled_job_run,
-    get_column_mapping_dict
+    get_column_mapping_dict,
+    get_product,
+    get_product_api_keys
 )
 from utils.google_sheets import load_sheet_data
 from utils.multi_source_pipeline import process_multi_source_pipeline
@@ -143,6 +145,7 @@ def run_scheduled_job(scheduled_job: Dict) -> Dict:
             'selected_indices': new_indices
         }]
         
+        # Build base config from environment and schedule settings
         config = {
             'llama_api_key': os.getenv('LLAMA_CLOUD_API_KEY'),
             'pinecone_api_key': os.getenv('PINECONE_API_KEY'),
@@ -163,6 +166,39 @@ def run_scheduled_job(scheduled_job: Dict) -> Dict:
             'dedup_layer1': schedule_config.get('dedup_layer1', True),
             'dedup_layer2': schedule_config.get('dedup_layer2', True)
         }
+        
+        # Override with product-specific settings if product is assigned
+        if source_info.get('product_id'):
+            product_info = get_product(source_info['product_id'])
+            if product_info and product_info['active']:
+                print(f"Using product-specific settings for: {product_info['name']}")
+                
+                # Get product-specific API keys from environment
+                product_api_keys = get_product_api_keys(source_info['product_id'])
+                
+                if product_api_keys.get('LLAMA_CLOUD_API_KEY'):
+                    config['llama_api_key'] = product_api_keys['LLAMA_CLOUD_API_KEY']
+                    print(f"  - Using product-specific LlamaParse API key")
+                
+                if product_api_keys.get('OPENAI_API_KEY'):
+                    config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
+                    print(f"  - Using product-specific OpenAI API key")
+                
+                if product_api_keys.get('PINECONE_API_KEY'):
+                    config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
+                    print(f"  - Using product-specific Pinecone API key")
+                
+                # Use product-specific Pinecone index
+                config['index_name'] = product_info['pinecone_index']
+                print(f"  - Using product-specific Pinecone index: {product_info['pinecone_index']}")
+                
+                # Use product-specific default settings
+                config['chunking_strategy'] = product_info.get('default_chunking_strategy', config['chunking_strategy'])
+                config['chunk_size'] = product_info.get('default_chunk_size', config['chunk_size'])
+                config['embedding_model'] = product_info.get('default_embedding_model', config['embedding_model'])
+                
+                print(f"  - Chunking: {config['chunking_strategy']} (size: {config['chunk_size']})")
+                print(f"  - Embedding model: {config['embedding_model']}")
         
         print("Starting processing pipeline...")
         
