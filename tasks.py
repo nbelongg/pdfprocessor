@@ -56,13 +56,10 @@ def call_with_retry(func, max_retries=3, backoff_factor=2, exceptions=(Exception
     Raises:
         Last exception if all retries fail
     """
-    last_exception = None
-    
     for attempt in range(max_retries):
         try:
             return func()
         except exceptions as e:
-            last_exception = e
             if attempt == max_retries - 1:
                 raise
             
@@ -70,7 +67,7 @@ def call_with_retry(func, max_retries=3, backoff_factor=2, exceptions=(Exception
             print(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s...")
             time.sleep(wait_time)
     
-    raise last_exception
+    raise RuntimeError("Max retries exceeded")
 
 
 @celery_app.task(bind=True, base=CallbackTask, name='tasks.process_pdf_task')
@@ -213,17 +210,47 @@ def process_batch_task(
                 'error': f'Data source {source_id} not found'
             }
         
+        product_config = config.copy()
+        
+        if source_info.get('product_id'):
+            product_info = get_product(source_info['product_id'])
+            if product_info and product_info['active']:
+                product_api_keys = get_product_api_keys(source_info['product_id'])
+                
+                if product_api_keys.get('LLAMA_CLOUD_API_KEY'):
+                    product_config['llama_api_key'] = product_api_keys['LLAMA_CLOUD_API_KEY']
+                if product_api_keys.get('OPENAI_API_KEY'):
+                    product_config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
+                if product_api_keys.get('PINECONE_API_KEY'):
+                    product_config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
+                if product_api_keys.get('GOOGLE_CREDENTIALS'):
+                    product_config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
+                
+                product_config['index_name'] = product_info['pinecone_index']
+                product_config['pinecone_environment'] = product_info.get('pinecone_environment', 'us-east-1')
+                product_config['default_namespace'] = product_info.get('default_namespace', 'default')
+                product_config['parsing_mode'] = product_info.get('parsing_mode', 'auto')
+                product_config['result_type'] = product_info.get('result_type', 'markdown')
+                product_config['language'] = product_info.get('language', 'en')
+                product_config['use_vendor_multimodal'] = product_info.get('use_vendor_multimodal', True)
+                product_config['page_separator'] = product_info.get('page_separator', '\n---\n')
+                product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
+                product_config['chunk_size'] = product_info.get('default_chunk_size', 512)
+                product_config['chunk_overlap'] = product_info.get('chunk_overlap', 50)
+                product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
+                product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
+        
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
             source_info['sheet_tab_name'],
-            config['google_credentials']
+            product_config['google_credentials']
         )
         
         column_mapping = get_column_mapping_dict(source_id)
         drive_link_column = column_mapping.get('drive_link', 'Drive Link')
         metadata_columns = column_mapping.get('metadata_columns', [])
         namespace_column = column_mapping.get('namespace')
-        default_namespace = config.get('default_namespace', 'default')
+        default_namespace = product_config.get('default_namespace', 'default')
         
         total_files = len(selected_indices)
         results = {
@@ -269,11 +296,11 @@ def process_batch_task(
             if namespace_column and namespace_column in row and pd.notna(row[namespace_column]):
                 namespace = str(row[namespace_column])
             
-            pdf_result = process_pdf_task.apply(args=[
+            pdf_result = process_pdf_task.apply_async(args=[
                 file_id,
                 row_metadata.get('filename', f'file_{file_id}.pdf'),
                 row_metadata,
-                config,
+                product_config,
                 job_id,
                 namespace
             ])

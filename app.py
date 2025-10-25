@@ -1288,52 +1288,36 @@ elif selected_page == "⚙️ Job Queue":
                     for source_id in selected_source_ids:
                         source_data_key = f'source_data_{source_id}'
                         if source_data_key in st.session_state:
-                            data_info = st.session_state[source_data_key]
                             selected_indices = st.session_state.get(f'selected_indices_{source_id}', [])
                             
                             if selected_indices:
                                 source_configs.append({
                                     'source_id': source_id,
-                                    'data': data_info['data'],
                                     'selected_indices': selected_indices
                                 })
                     
-                    config = {
-                        'llama_api_key': st.session_state.get('llama_api_key'),
-                        'pinecone_api_key': st.session_state.get('pinecone_api_key'),
-                        'openai_api_key': st.session_state.get('openai_api_key'),
-                        'google_credentials': st.session_state.get('google_credentials'),
-                        'parsing_mode': st.session_state.get('parsing_mode', 'auto'),
-                        'result_type': st.session_state.get('result_type', 'markdown'),
-                        'language': st.session_state.get('language', 'en'),
-                        'use_vendor_multimodal': st.session_state.get('use_vendor_multimodal', True),
-                        'page_separator': st.session_state.get('page_separator', '\\n---\\n'),
-                        'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
-                        'chunk_size': st.session_state.get('chunk_size', 512),
-                        'chunk_overlap': st.session_state.get('chunk_overlap', 50),
-                        'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
-                        'embedding_model': st.session_state.get('embedding_model'),
-                        'embedding_dimension': st.session_state.get('embedding_dimension', 1536),
-                        'pinecone_environment': st.session_state.get('pinecone_environment'),
-                        'index_name': st.session_state.get('index_name')
-                    }
-                    
-                    task = process_batch_task.delay(
-                        source_id=source_configs[0]['source_id'],
-                        selected_indices=source_configs[0]['selected_indices'],
-                        config=config,
-                        preview_mode=False
-                    )
-                    
-                    create_celery_job(
-                        task_id=task.id,
-                        task_name='Batch PDF Processing',
-                        source_id=source_configs[0]['source_id'],
-                        submitted_by='streamlit_user'
-                    )
-                    
-                    st.success(f"✅ Job submitted! Task ID: `{task.id}`")
-                    st.info("Job is running in background. Check the 'Active Jobs' tab for progress.")
+                    if not source_configs:
+                        st.error("❌ No papers selected")
+                    else:
+                        config = {}
+                        
+                        task = process_batch_task.delay(
+                            source_id=source_configs[0]['source_id'],
+                            selected_indices=source_configs[0]['selected_indices'],
+                            config=config,
+                            preview_mode=False
+                        )
+                        
+                        create_celery_job(
+                            task_id=task.id,
+                            task_name='Batch PDF Processing',
+                            source_id=source_configs[0]['source_id'],
+                            submitted_by='streamlit_user'
+                        )
+                        
+                        st.success(f"✅ Job submitted! Task ID: `{task.id}`")
+                        st.info("📊 Job is running in background. The worker will automatically load product-specific API keys and settings.")
+                        st.info("Check the 'Active Jobs' tab for progress.")
                     
                 except Exception as e:
                     st.error(f"❌ Error submitting job: {str(e)}")
