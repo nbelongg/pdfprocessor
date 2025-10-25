@@ -406,6 +406,29 @@ elif selected_page == "🏢 Products":
                 index=["text-embedding-3-small", "text-embedding-3-large"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if product_to_edit and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large"] else 0,
                 help="OpenAI embedding model to use"
             )
+            
+            max_dimension = 3072 if embedding_model == 'text-embedding-3-large' else 1536
+            default_dimension = max_dimension
+            
+            current_dimension = product_to_edit.get('embedding_dimension') if product_to_edit else None
+            
+            use_custom_dimension = st.checkbox(
+                "Use Custom Dimension",
+                value=current_dimension is not None,
+                help="Reduce embedding dimensions for cost savings and faster processing"
+            )
+            
+            embedding_dimension = None
+            if use_custom_dimension:
+                embedding_dimension = st.number_input(
+                    "Embedding Dimension",
+                    min_value=256,
+                    max_value=max_dimension,
+                    value=current_dimension if current_dimension else default_dimension,
+                    step=64,
+                    help=f"Number of dimensions (max {max_dimension} for {embedding_model}). Lower = faster & cheaper, but may reduce quality."
+                )
+                st.info(f"💡 Default: {default_dimension} dims. Reducing dimensions can significantly lower costs while maintaining good quality for many use cases.")
         
         with st.expander("📍 Pinecone Settings", expanded=True):
             col1, col2 = st.columns(2)
@@ -445,6 +468,7 @@ elif selected_page == "🏢 Products":
                                 chunk_size=chunk_size,
                                 chunk_overlap=chunk_overlap,
                                 embedding_model=embedding_model,
+                                embedding_dimension=embedding_dimension,
                                 parsing_mode=parsing_mode,
                                 result_type=result_type,
                                 language=language,
@@ -467,6 +491,7 @@ elif selected_page == "🏢 Products":
                                 chunk_size=chunk_size,
                                 chunk_overlap=chunk_overlap,
                                 embedding_model=embedding_model,
+                                embedding_dimension=embedding_dimension,
                                 parsing_mode=parsing_mode,
                                 result_type=result_type,
                                 language=language,
