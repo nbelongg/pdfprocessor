@@ -216,6 +216,43 @@ Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunk
 - Flexible 3-layer approach catches duplicates at different levels
 - Tracks duplicate attempts for analytics
 
+### Phase 3: Scheduled/Periodic Processing (COMPLETED - Oct 2025)
+
+**Goal**: Enable automatic periodic processing of new papers from data sources using scheduled jobs.
+
+**Implementation**:
+1. **Database Layer**:
+   - Created `scheduled_jobs` table to store scheduling configuration per data source
+   - Created `scheduled_job_runs` table to track execution history
+   - Stores schedule type (hourly, daily, weekly, interval), configuration, and run statistics
+
+2. **Scheduler Script** (`scheduler.py`):
+   - Standalone script for processing scheduled jobs
+   - Fetches new papers since last processed row for each enabled source
+   - Runs multi-source pipeline with configured settings
+   - Calculates next run time based on schedule type
+   - Records detailed run statistics (papers found, processed, duplicates, failures)
+
+3. **Scheduling UI** (Data Sources → Scheduling Tab):
+   - Configure schedules per data source
+   - Schedule types: hourly, daily (with hour), weekly (day + hour), interval (custom hours)
+   - Set max papers per run to control batch size
+   - Enable/disable schedules without deleting configuration
+   - View run history with success/failure metrics
+
+4. **Deployment Setup**:
+   - Scheduler runs as cron job via Replit Deployments
+   - Configure `GOOGLE_CREDENTIALS_PATH` environment variable for service account
+   - Automatic deduplication on every scheduled run
+   - Incremental processing from last processed row
+
+**Benefits**:
+- Hands-free processing of new papers as they're added to Google Sheets
+- Configurable schedules per data source (different topics can run at different times)
+- Built-in deduplication prevents re-processing
+- Detailed run history for monitoring and troubleshooting
+- Incremental processing saves API costs
+
 ### Phase 2 (Previous): Processing History & Tracking
 - All processing jobs are now persisted in PostgreSQL database
 - Unique job IDs generated for each processing run
