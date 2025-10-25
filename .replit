@@ -5,7 +5,7 @@ channel = "stable-25_05"
 packages = ["glibcLocales"]
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
 run = ["streamlit", "run", "app.py", "--server.port", "5000"]
 
 [workflows]
@@ -35,6 +35,10 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 33667
+externalPort = 3002
 
 [[ports]]
 localPort = 34515

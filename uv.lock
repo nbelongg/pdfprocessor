@@ -2439,7 +2439,6 @@ dependencies = [
     { name = "google-api-python-client" },
     { name = "gspread" },
     { name = "llama-index" },
-    { name = "llama-index-embeddings-huggingface" },
     { name = "llama-index-embeddings-openai" },
     { name = "llama-parse" },
     { name = "oauth2client" },
@@ -2450,12 +2449,17 @@ dependencies = [
     { name = "streamlit" },
 ]
 
+[package.optional-dependencies]
+huggingface = [
+    { name = "llama-index-embeddings-huggingface" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.185.0" },
     { name = "gspread", specifier = ">=6.2.1" },
     { name = "llama-index", specifier = ">=0.14.5" },
-    { name = "llama-index-embeddings-huggingface", specifier = ">=0.6.1" },
+    { name = "llama-index-embeddings-huggingface", marker = "extra == 'huggingface'", specifier = ">=0.6.1" },
     { name = "llama-index-embeddings-openai", specifier = ">=0.5.1" },
     { name = "llama-parse", specifier = ">=0.6.54" },
     { name = "oauth2client", specifier = ">=4.1.3" },
@@ -2465,6 +2469,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "streamlit", specifier = ">=1.50.0" },
 ]
+provides-extras = ["huggingface"]
 
 [[package]]
 name = "requests"

@@ -1034,14 +1034,11 @@ elif selected_page == "⚙️ Processing Settings":
         embedding_model_choice = st.selectbox(
             "Embedding Model",
             [
-                "text-embedding-3-small (OpenAI)",
+                "text-embedding-3-small (OpenAI) ⭐ Recommended",
                 "text-embedding-3-large (OpenAI)",
-                "text-embedding-ada-002 (OpenAI)",
-                "BAAI/bge-small-en-v1.5 (HuggingFace)",
-                "BAAI/bge-base-en-v1.5 (HuggingFace)",
-                "sentence-transformers/all-MiniLM-L6-v2 (HuggingFace)"
+                "text-embedding-ada-002 (OpenAI)"
             ],
-            help="Choose your embedding model"
+            help="OpenAI embeddings are optimized for deployment size. HuggingFace models require additional dependencies."
         )
         st.session_state.embedding_model = embedding_model_choice
         
