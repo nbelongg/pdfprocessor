@@ -27,15 +27,17 @@ def process_pipeline(
         selected_indices: List of row indices to process
         config: Configuration dictionary
         progress_callback: Optional callback function for progress updates
-        preview_mode: If True, only parse and chunk without uploading to Pinecone
+        preview_mode: If True, only parse and chunk without uploading to Pinecone or saving to DB
         
     Returns:
         Dictionary containing processing results
     """
     job_id = str(uuid.uuid4())
+    has_errors = False
     
-    create_processing_job(job_id, config)
-    update_job_status(job_id, 'running')
+    if not preview_mode:
+        create_processing_job(job_id, config)
+        update_job_status(job_id, 'running')
     
     results = {
         'job_id': job_id,
@@ -143,11 +145,10 @@ def process_pipeline(
                     'namespace': namespace
                 })
             
-            save_chunks(job_id, file_id, file_metadata.get('name', ''), chunks_data)
-            
             if preview_mode:
                 results['preview_chunks'].extend(chunks_data)
             else:
+                save_chunks(job_id, file_id, file_metadata.get('name', ''), chunks_data)
                 if progress_callback:
                     progress_callback(
                         int((idx / total_files) * 100),
@@ -179,24 +180,32 @@ def process_pipeline(
             })
             
         except Exception as e:
+            has_errors = True
             results['details'].append({
                 'row': row_idx,
                 'status': 'error',
                 'error': str(e)
             })
-            update_job_status(job_id, 'error')
+            if not preview_mode:
+                update_job_status(job_id, 'error')
     
     if progress_callback:
         progress_callback(100, "Processing complete!")
     
-    update_job_status(
-        job_id, 
-        'completed' if not preview_mode else 'preview',
-        total_pdfs=results['total_pdfs'],
-        processed_pdfs=results['total_pdfs'],
-        total_chunks=results['total_chunks'],
-        total_embeddings=results['total_embeddings'],
-        vectors_stored=results.get('vectors_stored', 0)
-    )
+    if not preview_mode:
+        if has_errors:
+            final_status = 'error'
+        else:
+            final_status = 'completed'
+        
+        update_job_status(
+            job_id, 
+            final_status,
+            total_pdfs=results['total_pdfs'],
+            processed_pdfs=results['total_pdfs'],
+            total_chunks=results['total_chunks'],
+            total_embeddings=results['total_embeddings'],
+            vectors_stored=results.get('vectors_stored', 0)
+        )
     
     return results
