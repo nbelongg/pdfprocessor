@@ -115,16 +115,27 @@ Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunk
 - **Session State**: Temporary configuration and processing state (in-memory)
 
 ### Database Schema
-1. **processing_jobs**: Tracks all processing jobs
+1. **data_sources**: Stores Google Sheet data source configurations
+   - Source ID, name, description, sheet URL, tab name
+   - Sheet type (single or multi-tab), status (active/inactive)
+   - Last processed timestamp, total rows, processing statistics
+   - Created and updated timestamps
+
+2. **column_mappings**: Maps source columns to metadata roles
+   - Links to data source via source_id
+   - Column name and role (drive_link, paper_title, authors, tags, namespace, etc.)
+   - Custom mappings for flexible metadata extraction
+
+3. **processing_jobs**: Tracks all processing jobs
    - job_id, status, configuration, metrics (PDFs, chunks, embeddings)
    - Timestamps for created, updated, and completed
    
-2. **processing_chunks**: Stores individual chunks for preview and validation
+4. **processing_chunks**: Stores individual chunks for preview and validation
    - Links to job via job_id
    - Contains chunk text, metadata, namespace
    - Tracks whether embedding has been uploaded to Pinecone
 
-3. **metadata_transformations**: Stores custom metadata transformation rules
+5. **metadata_transformations**: Stores custom metadata transformation rules
    - Reusable transformations for metadata processing
 
 ### Authentication Flow
@@ -132,9 +143,44 @@ Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunk
 - Google Services: Service account credentials (JSON file upload - required)
 - External APIs: API key-based authentication (environment variables or user input)
 
-## Recent Changes (Phase 2)
+## Recent Changes
 
-### Processing History & Tracking
+### Phase 1: Multi-Source Data Management (COMPLETED - Oct 2025)
+
+**Goal**: Enable management and processing of papers from multiple Google Sheet sources, each with unique column mappings and metadata configurations.
+
+**Implementation**:
+1. **Database Layer**:
+   - Created `data_sources` table to store Google Sheet configurations
+   - Created `column_mappings` table for flexible metadata extraction per source
+   - Support for single-tab and multi-tab sheets
+   - Tracking of processing statistics per source
+
+2. **Data Sources UI** (Tab 1):
+   - Add/edit/delete data sources with descriptive names
+   - Automatic sheet column detection when adding sources
+   - Role-based column mapping interface (Drive Link, Paper Title, Authors, Tags, Namespace, etc.)
+   - Support for custom metadata columns beyond predefined roles
+   - Active/inactive status toggle for each source
+
+3. **Multi-Source Pipeline** (`utils/multi_source_pipeline.py`):
+   - Processes papers from multiple sources simultaneously
+   - Applies per-source column mappings and metadata
+   - Merges results while preserving source identity
+   - Supports both preview and full processing modes
+
+4. **Updated Tabs**:
+   - **Select Files** (Tab 4): Multi-select data sources, view papers from each source, select individual papers
+   - **Preview Chunks** (Tab 5): Preview papers from multiple sources before uploading
+   - **Process & Upload** (Tab 6): Batch process all selected papers from all sources
+
+**Benefits**:
+- Organize papers by topic/category using different sheets
+- Each source can have unique metadata structure
+- Process thousands of papers across multiple sources in one batch
+- Maintain clear source tracking for all processed papers
+
+### Phase 2: Processing History & Tracking
 - All processing jobs are now persisted in PostgreSQL database
 - Unique job IDs generated for each processing run
 - Job status tracking: pending, running, completed, preview, error

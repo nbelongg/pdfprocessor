@@ -381,3 +381,119 @@ def get_column_mapping_dict(source_id: int) -> Dict[str, str]:
     """Get column mappings as a dictionary {role: column_name}."""
     mappings = get_column_mappings(source_id)
     return {m['column_role']: m['column_name'] for m in mappings}
+
+def check_paper_processed(drive_file_id: str) -> Optional[Dict]:
+    """Check if a paper has been processed before by Drive file ID."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM processed_papers WHERE drive_file_id = %s",
+                (drive_file_id,)
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+def check_paper_by_content_hash(content_hash: str) -> Optional[Dict]:
+    """Check if a paper has been processed before by content hash."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM processed_papers WHERE content_hash = %s",
+                (content_hash,)
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+def record_processed_paper(
+    drive_file_id: str,
+    content_hash: str,
+    paper_title: str,
+    authors: str,
+    metadata: Dict,
+    pinecone_namespace: str,
+    source_id: int,
+    row_number: int
+) -> int:
+    """Record a newly processed paper."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO processed_papers
+                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace)
+            )
+            paper_id = cur.fetchone()['id']
+            
+            cur.execute(
+                """
+                INSERT INTO source_paper_mapping (source_id, paper_id, row_number)
+                VALUES (%s, %s, %s)
+                """,
+                (source_id, paper_id, row_number)
+            )
+            
+            conn.commit()
+            return paper_id
+    finally:
+        conn.close()
+
+def update_processed_paper(paper_id: int, source_id: int, row_number: int):
+    """Update existing processed paper (increment count, update timestamp)."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE processed_papers
+                SET processing_count = processing_count + 1,
+                    last_processed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (paper_id,)
+            )
+            
+            cur.execute(
+                """
+                INSERT INTO source_paper_mapping (source_id, paper_id, row_number)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (source_id, paper_id) DO UPDATE
+                SET last_seen_at = CURRENT_TIMESTAMP
+                """,
+                (source_id, paper_id, row_number)
+            )
+            
+            conn.commit()
+    finally:
+        conn.close()
+
+def get_deduplication_stats() -> Dict:
+    """Get statistics about processed papers and deduplication."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) as total FROM processed_papers")
+            total = cur.fetchone()['total']
+            
+            cur.execute("SELECT COUNT(*) as duplicates FROM processed_papers WHERE processing_count > 1")
+            duplicates = cur.fetchone()['duplicates']
+            
+            cur.execute("SELECT SUM(processing_count) as total_attempts FROM processed_papers")
+            total_attempts = cur.fetchone()['total_attempts'] or 0
+            
+            return {
+                'unique_papers': total,
+                'duplicate_attempts': total_attempts - total,
+                'papers_seen_multiple_times': duplicates
+            }
+    finally:
+        conn.close()

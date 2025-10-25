@@ -16,6 +16,7 @@ from utils.database import (
     save_chunks, mark_chunks_uploaded, update_last_processed,
     get_data_source, get_column_mapping_dict
 )
+from utils.deduplication import check_all_layers, record_or_update_paper
 
 
 def process_multi_source_pipeline(
@@ -112,6 +113,50 @@ def process_multi_source_pipeline(
                     })
                     continue
                 
+                paper_title = row.get(column_mappings.get('paper_title', ''), '') if column_mappings.get('paper_title') else ''
+                authors = row.get(column_mappings.get('authors', ''), '') if column_mappings.get('authors') else ''
+                
+                dedup_result = None
+                if not preview_mode:
+                    enable_dedup_l1 = config.get('dedup_layer1', True)
+                    enable_dedup_l2 = config.get('dedup_layer2', True)
+                    
+                    dedup_result = check_all_layers(
+                        drive_file_id=file_id,
+                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                        authors=str(authors) if pd.notna(authors) else '',
+                        embedding=None,
+                        namespace='default',
+                        pinecone_index=None,
+                        enable_layer1=enable_dedup_l1,
+                        enable_layer2=enable_dedup_l2,
+                        enable_layer3=False
+                    )
+                    
+                    if dedup_result['is_duplicate']:
+                        results['details'].append({
+                            'source': source_info['name'],
+                            'row': idx,
+                            'file_id': file_id,
+                            'status': 'skipped_duplicate',
+                            'duplicate_layer': dedup_result['duplicate_layer'],
+                            'existing_paper': dedup_result['existing_paper']
+                        })
+                        
+                        record_or_update_paper(
+                            drive_file_id=file_id,
+                            content_hash=dedup_result['content_hash'],
+                            paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                            authors=str(authors) if pd.notna(authors) else '',
+                            metadata={},
+                            pinecone_namespace='default',
+                            source_id=source_id,
+                            row_number=idx,
+                            is_duplicate=True,
+                            existing_paper=dedup_result['existing_paper']
+                        )
+                        continue
+                
                 if progress_callback:
                     progress_callback(
                         int((processed_papers / total_papers) * 100),
@@ -202,6 +247,25 @@ def process_multi_source_pipeline(
                     
                     mark_chunks_uploaded(job_id, file_id)
                     results['vectors_stored'] += uploaded_count
+                    
+                    from utils.deduplication import generate_content_hash
+                    content_hash = generate_content_hash(
+                        str(paper_title) if pd.notna(paper_title) else '',
+                        str(authors) if pd.notna(authors) else ''
+                    )
+                    
+                    record_or_update_paper(
+                        drive_file_id=file_id,
+                        content_hash=content_hash,
+                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                        authors=str(authors) if pd.notna(authors) else '',
+                        metadata=row_metadata,
+                        pinecone_namespace=namespace,
+                        source_id=source_id,
+                        row_number=idx,
+                        is_duplicate=False,
+                        existing_paper=None
+                    )
                 
                 results['total_pdfs'] += 1
                 results['total_chunks'] += len(nodes)
