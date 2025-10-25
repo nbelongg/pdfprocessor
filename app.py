@@ -187,6 +187,7 @@ with tab2:
                         st.markdown(f"**LlamaParse Secret:** `{product.get('llamaparse_api_key_secret', 'Not set')}`")
                         st.markdown(f"**OpenAI Secret:** `{product.get('openai_api_key_secret', 'Not set')}`")
                         st.markdown(f"**Pinecone Secret:** `{product.get('pinecone_api_key_secret', 'Not set')}`")
+                        st.markdown(f"**Google Credentials Secret:** `{product.get('google_credentials_secret', 'Not set')}`")
                     
                     st.markdown("**Default Settings:**")
                     st.markdown(f"- Chunking: {product.get('default_chunking_strategy', 'N/A')} (size: {product.get('default_chunk_size', 'N/A')})")
@@ -264,6 +265,13 @@ with tab2:
             help="Name of the Replit secret containing the Pinecone API key"
         )
         
+        google_credentials_secret = st.text_input(
+            "Google Service Account JSON Secret Name",
+            value=product_to_edit.get('google_credentials_secret', '') if edit_mode else "",
+            placeholder="e.g., PRODUCT_A_GOOGLE_CREDS_JSON",
+            help="Name of the Replit secret containing the Google service account JSON (as a string)"
+        )
+        
         st.markdown("### Default Processing Settings")
         
         col1, col2 = st.columns(2)
@@ -306,6 +314,7 @@ with tab2:
                                 llamaparse_secret=llamaparse_secret,
                                 openai_secret=openai_secret,
                                 pinecone_secret=pinecone_secret,
+                                google_credentials_secret=google_credentials_secret,
                                 chunking_strategy=chunking_strategy,
                                 chunk_size=chunk_size,
                                 embedding_model=embedding_model
@@ -318,6 +327,7 @@ with tab2:
                                 llamaparse_secret=llamaparse_secret,
                                 openai_secret=openai_secret,
                                 pinecone_secret=pinecone_secret,
+                                google_credentials_secret=google_credentials_secret,
                                 chunking_strategy=chunking_strategy,
                                 chunk_size=chunk_size,
                                 embedding_model=embedding_model
