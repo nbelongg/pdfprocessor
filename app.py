@@ -71,85 +71,88 @@ except Exception as e:
     st.sidebar.warning(f"Products table initialization: {str(e)}")
 
 with tab1:
-    st.header("API Configuration")
-    st.markdown("Configure your API keys and credentials for the pipeline")
+    st.header("🏢 Product-Based Configuration")
+    
+    st.info("""
+    **This application uses product-specific credentials for complete isolation between your startups.**
+    
+    All API keys and credentials are managed through the **Products** tab (next tab).
+    """)
+    
+    st.markdown("### How It Works")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("LlamaParse API")
-        llama_api_key = st.text_input(
-            "LlamaParse API Key",
-            type="password",
-            value=st.session_state.get('llama_api_key', os.getenv('LLAMA_CLOUD_API_KEY', '')),
-            help="Get your API key from cloud.llamaindex.ai"
-        )
-        if llama_api_key:
-            st.session_state.llama_api_key = llama_api_key
+        st.markdown("**1️⃣ Create Products**")
+        st.markdown("Go to the **Products** tab to create entries for each of your startups/products.")
         
-        st.subheader("Pinecone API")
-        pinecone_api_key = st.text_input(
-            "Pinecone API Key",
-            type="password",
-            value=st.session_state.get('pinecone_api_key', os.getenv('PINECONE_API_KEY', '')),
-            help="Get your API key from app.pinecone.io"
-        )
-        if pinecone_api_key:
-            st.session_state.pinecone_api_key = pinecone_api_key
-        
-        st.subheader("Embedding Model API")
-        embedding_provider = st.selectbox(
-            "Embedding Provider",
-            ["OpenAI", "HuggingFace"],
-            key="embedding_provider_select"
-        )
-        
-        if embedding_provider == "OpenAI":
-            openai_api_key = st.text_input(
-                "OpenAI API Key",
-                type="password",
-                value=st.session_state.get('openai_api_key', os.getenv('OPENAI_API_KEY', '')),
-                help="Required for OpenAI embeddings"
-            )
-            if openai_api_key:
-                st.session_state.openai_api_key = openai_api_key
+        st.markdown("**2️⃣ Set API Keys in Replit Secrets**")
+        st.markdown("""
+        For each product, configure secrets in Replit:
+        - LlamaParse API key
+        - OpenAI API key (if using OpenAI embeddings)
+        - Pinecone API key
+        - Google Service Account JSON (as a string)
+        """)
     
     with col2:
-        st.subheader("Google Drive & Sheets")
-        st.markdown("Upload your Google Service Account JSON credentials")
+        st.markdown("**3️⃣ Assign Products to Data Sources**")
+        st.markdown("When creating a data source, select which product it belongs to.")
         
-        uploaded_file = st.file_uploader(
-            "Service Account JSON",
-            type=['json'],
-            help="Download from Google Cloud Console"
-        )
-        
-        if uploaded_file is not None:
-            credentials_data = json.load(uploaded_file)
-            st.session_state.google_credentials = credentials_data
-            st.success("✅ Google credentials loaded")
-        elif 'google_credentials' in st.session_state:
-            st.success("✅ Google credentials already loaded")
-        else:
-            st.info("📤 Upload your service account JSON file")
-        
-
+        st.markdown("**4️⃣ Automatic Routing**")
+        st.markdown("""
+        The pipeline automatically uses the correct credentials:
+        - Product-specific API keys
+        - Product-specific Pinecone index
+        - Product-specific Google credentials
+        """)
+    
     st.markdown("---")
     
-    required_keys = []
-    if not st.session_state.get('llama_api_key'):
-        required_keys.append("LlamaParse API Key")
-    if not st.session_state.get('pinecone_api_key'):
-        required_keys.append("Pinecone API Key")
-    if embedding_provider == "OpenAI" and not st.session_state.get('openai_api_key'):
-        required_keys.append("OpenAI API Key")
-    if not st.session_state.get('google_credentials'):
-        required_keys.append("Google Service Account JSON")
+    st.markdown("### 📋 Quick Setup Checklist")
     
-    if required_keys:
-        st.warning(f"⚠️ Missing: {', '.join(required_keys)}")
+    from utils.database import get_products
+    products = get_products(active_only=True)
+    
+    if not products:
+        st.warning("⚠️ No products configured yet. Go to the **Products** tab to create your first product.")
     else:
-        st.success("✅ All required API keys configured!")
+        st.success(f"✅ {len(products)} active product(s) configured")
+        
+        st.markdown("**Your Products:**")
+        for product in products:
+            st.markdown(f"- **{product['name']}** → Index: `{product['pinecone_index']}`")
+    
+    st.markdown("---")
+    
+    st.markdown("### 🔐 Secret Management Example")
+    
+    with st.expander("Click to see example setup"):
+        st.code("""
+# Example for "Startup A" product
+
+Replit Secrets to configure:
+┌─────────────────────────────────────────────────────────────────┐
+│ Secret Name: STARTUP_A_LLAMAPARSE_KEY                          │
+│ Secret Value: llx-abc123xyz...                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ Secret Name: STARTUP_A_OPENAI_KEY                              │
+│ Secret Value: sk-proj-def456...                                │
+├─────────────────────────────────────────────────────────────────┤
+│ Secret Name: STARTUP_A_PINECONE_KEY                            │
+│ Secret Value: pcsk-ghi789...                                   │
+├─────────────────────────────────────────────────────────────────┤
+│ Secret Name: STARTUP_A_GOOGLE_CREDS                            │
+│ Secret Value: {"type": "service_account", "project_id": ...}   │
+└─────────────────────────────────────────────────────────────────┘
+
+Then in the Products tab:
+- LlamaParse Secret Name: STARTUP_A_LLAMAPARSE_KEY
+- OpenAI Secret Name: STARTUP_A_OPENAI_KEY
+- Pinecone Secret Name: STARTUP_A_PINECONE_KEY
+- Google Credentials Secret Name: STARTUP_A_GOOGLE_CREDS
+        """, language="text")
 
 with tab2:
     st.header("Product Management")
