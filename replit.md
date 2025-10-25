@@ -180,7 +180,43 @@ Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunk
 - Process thousands of papers across multiple sources in one batch
 - Maintain clear source tracking for all processed papers
 
-### Phase 2: Processing History & Tracking
+### Phase 2: Deduplication System (COMPLETED - Oct 2025)
+
+**Goal**: Prevent duplicate papers from being processed and uploaded to Pinecone using a 3-layer deduplication approach.
+
+**Implementation**:
+1. **Database Layer**:
+   - Created `processed_papers` table to track all processed papers
+   - Created `source_paper_mapping` table to link papers to their source(s)
+   - Stores Drive file ID, content hash (SHA-256 of title + authors), metadata
+   - Tracks processing count and timestamps for each paper
+
+2. **Deduplication Module** (`utils/deduplication.py`):
+   - **Layer 1**: Drive file ID check (exact match on Google Drive file ID)
+   - **Layer 2**: Content hash check (SHA-256 hash of normalized title + authors)
+   - **Layer 3**: Embedding similarity check (cosine similarity threshold, optional)
+   - Configurable layers - can enable/disable each independently
+   - Returns duplicate status, which layer detected it, and existing paper data
+
+3. **Pipeline Integration** (`utils/multi_source_pipeline.py`):
+   - Checks deduplication before downloading PDF (saves time and API calls)
+   - Records/updates paper in database after successful processing
+   - Tracks which sources have seen each paper
+   - Skips duplicate papers and logs them in processing report
+
+4. **Tracking & Statistics**:
+   - Get deduplication stats: unique papers, duplicate attempts, papers seen multiple times
+   - Source-paper mapping enables cross-source duplicate detection
+   - Processing history shows which papers were skipped as duplicates
+
+**Benefits**:
+- Saves time and API costs by not re-processing duplicates
+- Prevents duplicate vectors in Pinecone
+- Handles papers that appear in multiple Google Sheets
+- Flexible 3-layer approach catches duplicates at different levels
+- Tracks duplicate attempts for analytics
+
+### Phase 2 (Previous): Processing History & Tracking
 - All processing jobs are now persisted in PostgreSQL database
 - Unique job IDs generated for each processing run
 - Job status tracking: pending, running, completed, preview, error
