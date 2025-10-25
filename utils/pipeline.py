@@ -1,17 +1,23 @@
 import pandas as pd
 from typing import List, Dict, Callable, Optional
+import uuid
 from utils.google_sheets import extract_file_id_from_drive_link
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
 from utils.llama_parser import parse_pdf_with_llamaparse
 from utils.chunker import chunk_text
 from utils.embedder import create_embeddings
 from utils.pinecone_uploader import initialize_pinecone, upload_to_pinecone
+from utils.database import (
+    create_processing_job, update_job_status, 
+    save_chunks, mark_chunks_uploaded
+)
 
 def process_pipeline(
     sheet_data: pd.DataFrame,
     selected_indices: List[int],
     config: Dict,
-    progress_callback: Optional[Callable] = None
+    progress_callback: Optional[Callable] = None,
+    preview_mode: bool = False
 ) -> Dict:
     """
     Main processing pipeline for PDF chunking and embedding.
@@ -21,16 +27,24 @@ def process_pipeline(
         selected_indices: List of row indices to process
         config: Configuration dictionary
         progress_callback: Optional callback function for progress updates
+        preview_mode: If True, only parse and chunk without uploading to Pinecone
         
     Returns:
         Dictionary containing processing results
     """
+    job_id = str(uuid.uuid4())
+    
+    create_processing_job(job_id, config)
+    update_job_status(job_id, 'running')
+    
     results = {
+        'job_id': job_id,
         'total_pdfs': 0,
         'total_chunks': 0,
         'total_embeddings': 0,
         'vectors_stored': 0,
-        'details': []
+        'details': [],
+        'preview_chunks': [] if preview_mode else None
     }
     
     drive_link_column = config.get('drive_link_column', 'Drive Link')
@@ -38,7 +52,10 @@ def process_pipeline(
     namespace_column = config.get('namespace_column')
     default_namespace = config.get('default_namespace', 'default')
     
-    pinecone_index = initialize_pinecone(config)
+    if not preview_mode:
+        pinecone_index = initialize_pinecone(config)
+    else:
+        pinecone_index = None
     
     total_files = len(selected_indices)
     
@@ -118,24 +135,39 @@ def process_pipeline(
             
             metadata_list = [row_metadata.copy() for _ in range(len(nodes))]
             
-            if progress_callback:
-                progress_callback(
-                    int((idx / total_files) * 100),
-                    f"Uploading to Pinecone (namespace: {namespace})..."
-                )
+            chunks_data = []
+            for i, node in enumerate(nodes):
+                chunks_data.append({
+                    'text': node.get_content(),
+                    'metadata': metadata_list[i],
+                    'namespace': namespace
+                })
             
-            uploaded_count = upload_to_pinecone(
-                pinecone_index,
-                embeddings,
-                nodes,
-                metadata_list,
-                namespace
-            )
+            save_chunks(job_id, file_id, file_metadata.get('name', ''), chunks_data)
+            
+            if preview_mode:
+                results['preview_chunks'].extend(chunks_data)
+            else:
+                if progress_callback:
+                    progress_callback(
+                        int((idx / total_files) * 100),
+                        f"Uploading to Pinecone (namespace: {namespace})..."
+                    )
+                
+                uploaded_count = upload_to_pinecone(
+                    pinecone_index,
+                    embeddings,
+                    nodes,
+                    metadata_list,
+                    namespace
+                )
+                
+                mark_chunks_uploaded(job_id, file_id)
+                results['vectors_stored'] += uploaded_count
             
             results['total_pdfs'] += 1
             results['total_chunks'] += len(nodes)
             results['total_embeddings'] += len(embeddings)
-            results['vectors_stored'] += uploaded_count
             
             results['details'].append({
                 'row': row_idx,
@@ -152,8 +184,19 @@ def process_pipeline(
                 'status': 'error',
                 'error': str(e)
             })
+            update_job_status(job_id, 'error')
     
     if progress_callback:
         progress_callback(100, "Processing complete!")
+    
+    update_job_status(
+        job_id, 
+        'completed' if not preview_mode else 'preview',
+        total_pdfs=results['total_pdfs'],
+        processed_pdfs=results['total_pdfs'],
+        total_chunks=results['total_chunks'],
+        total_embeddings=results['total_embeddings'],
+        vectors_stored=results.get('vectors_stored', 0)
+    )
     
     return results

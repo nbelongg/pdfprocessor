@@ -49,12 +49,15 @@ st.markdown("Process PDFs from Google Drive using LlamaParse, chunk them, create
 if 'processing_state' not in st.session_state:
     st.session_state.processing_state = None
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🔑 Configuration", 
     "📁 Select Files", 
     "⚙️ Processing Settings", 
+    "👁️ Preview Chunks",
     "🚀 Process & Upload",
-    "📊 Status"
+    "📊 Status",
+    "📜 History",
+    "🔍 Search Test"
 ])
 
 with tab1:
@@ -398,6 +401,107 @@ with tab3:
             st.info("Load sheet data first to configure metadata mapping")
 
 with tab4:
+    st.header("Preview Chunks")
+    st.markdown("Preview how your PDFs will be chunked before uploading to Pinecone")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("Preview Settings")
+        
+        preview_limit = st.number_input(
+            "Number of PDFs to Preview",
+            min_value=1,
+            max_value=10,
+            value=1,
+            help="How many PDFs to parse and chunk for preview"
+        )
+        
+        if st.button("🔍 Generate Preview", use_container_width=True):
+            selected_indices = st.session_state.get('selected_pdf_indices', [])[:preview_limit]
+            
+            if not selected_indices:
+                st.error("❌ Please select at least one PDF")
+            elif not st.session_state.get('llama_api_key'):
+                st.error("❌ LlamaParse API key required")
+            elif not st.session_state.get('sheet_data') is not None:
+                st.error("❌ Please load sheet data first")
+            else:
+                with st.spinner("Generating preview..."):
+                    try:
+                        from utils.pipeline import process_pipeline
+                        
+                        results = process_pipeline(
+                            sheet_data=st.session_state.sheet_data,
+                            selected_indices=selected_indices,
+                            config={
+                                'llama_api_key': st.session_state.llama_api_key,
+                                'google_credentials': st.session_state.get('google_credentials'),
+                                'parsing_mode': st.session_state.get('parsing_mode', 'auto'),
+                                'result_type': st.session_state.get('result_type', 'markdown'),
+                                'language': st.session_state.get('language', 'en'),
+                                'use_vendor_multimodal': st.session_state.get('use_vendor_multimodal', True),
+                                'page_separator': st.session_state.get('page_separator', '\\n---\\n'),
+                                'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
+                                'chunk_size': st.session_state.get('chunk_size', 512),
+                                'chunk_overlap': st.session_state.get('chunk_overlap', 50),
+                                'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
+                                'embedding_model': st.session_state.get('embedding_model'),
+                                'metadata_columns': st.session_state.get('metadata_columns', []),
+                                'namespace_column': st.session_state.get('namespace_column'),
+                                'drive_link_column': st.session_state.get('drive_link_column', 'Drive Link'),
+                                'default_namespace': st.session_state.get('default_namespace', 'default'),
+                                'sheet_url': st.session_state.get('sheet_url', ''),
+                                'sheet_tab': st.session_state.get('sheet_tab', 'Sheet1')
+                            },
+                            preview_mode=True
+                        )
+                        
+                        st.session_state.preview_results = results
+                        st.success(f"✅ Preview generated for {results['total_pdfs']} PDF(s)")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error generating preview: {str(e)}")
+                        st.exception(e)
+    
+    with col2:
+        st.subheader("Chunk Preview")
+        
+        if 'preview_results' in st.session_state:
+            results = st.session_state.preview_results
+            chunks = results.get('preview_chunks', [])
+            
+            if chunks:
+                st.info(f"📊 Generated {len(chunks)} chunks from {results['total_pdfs']} PDF(s)")
+                
+                chunk_idx = st.number_input(
+                    "Chunk to view",
+                    min_value=0,
+                    max_value=len(chunks)-1,
+                    value=0
+                )
+                
+                chunk = chunks[chunk_idx]
+                
+                st.markdown(f"**Chunk {chunk_idx + 1} of {len(chunks)}**")
+                st.markdown(f"**Namespace:** `{chunk['namespace']}`")
+                
+                with st.expander("📝 Chunk Text", expanded=True):
+                    st.text_area(
+                        "Content",
+                        chunk['text'],
+                        height=300,
+                        key=f"chunk_{chunk_idx}"
+                    )
+                
+                with st.expander("🏷️ Metadata", expanded=False):
+                    st.json(chunk['metadata'])
+            else:
+                st.warning("No chunks generated")
+        else:
+            st.info("Click 'Generate Preview' to see chunks")
+
+with tab5:
     st.header("Process & Upload to Pinecone")
     
     col1, col2, col3 = st.columns(3)
@@ -455,9 +559,12 @@ with tab4:
                         'default_namespace': st.session_state.get('default_namespace', 'default'),
                         'metadata_columns': st.session_state.get('metadata_columns', []),
                         'namespace_column': st.session_state.get('namespace_column'),
-                        'drive_link_column': st.session_state.get('drive_link_column', 'Drive Link')
+                        'drive_link_column': st.session_state.get('drive_link_column', 'Drive Link'),
+                        'sheet_url': st.session_state.get('sheet_url', ''),
+                        'sheet_tab': st.session_state.get('sheet_tab', 'Sheet1')
                     },
-                    progress_callback=lambda pct, msg: (progress_bar.progress(pct), status_text.text(msg))
+                    progress_callback=lambda pct, msg: (progress_bar.progress(pct), status_text.text(msg)),
+                    preview_mode=False
                 )
                 
                 st.session_state.processing_results = results
@@ -471,7 +578,7 @@ with tab4:
                 st.error(f"❌ Error during processing: {str(e)}")
                 st.exception(e)
 
-with tab5:
+with tab6:
     st.header("Processing Status & Logs")
     
     if st.session_state.processing_state == "running":
@@ -492,6 +599,9 @@ with tab5:
             with col4:
                 st.metric("Vectors Stored", results.get('vectors_stored', 0))
             
+            st.subheader("Job ID")
+            st.code(results.get('job_id', 'N/A'))
+            
             st.subheader("Processing Details")
             if 'details' in results:
                 st.json(results['details'])
@@ -500,6 +610,161 @@ with tab5:
         st.error("❌ Processing encountered an error")
     else:
         st.info("👆 Configure settings and start processing to see status here")
+
+with tab7:
+    st.header("Processing History")
+    st.markdown("View past processing jobs and their results")
+    
+    if st.button("🔄 Refresh History"):
+        from utils.database import get_job_history
+        st.session_state.job_history = get_job_history(50)
+    
+    if 'job_history' not in st.session_state:
+        from utils.database import get_job_history
+        st.session_state.job_history = get_job_history(50)
+    
+    history = st.session_state.job_history
+    
+    if history:
+        for job in history:
+            with st.expander(f"Job {job['job_id'][:8]}... - {job['status']} - {job.get('created_at', 'N/A')}"):
+                col1, col2, col3, col4, col5 = st.columns(5)
+                
+                with col1:
+                    st.metric("Status", job['status'])
+                with col2:
+                    st.metric("PDFs", job.get('total_pdfs', 0))
+                with col3:
+                    st.metric("Chunks", job.get('total_chunks', 0))
+                with col4:
+                    st.metric("Embeddings", job.get('total_embeddings', 0))
+                with col5:
+                    st.metric("Stored", job.get('vectors_stored', 0))
+                
+                st.markdown(f"**Sheet:** {job.get('sheet_url', 'N/A')}")
+                st.markdown(f"**Tab:** {job.get('sheet_tab', 'N/A')}")
+                
+                if st.button(f"View Details", key=f"view_{job['job_id']}"):
+                    from utils.database import get_job_details, get_job_chunks
+                    
+                    details = get_job_details(job['job_id'])
+                    chunks = get_job_chunks(job['job_id'])
+                    
+                    st.session_state[f"job_details_{job['job_id']}"] = details
+                    st.session_state[f"job_chunks_{job['job_id']}"] = chunks
+                
+                if f"job_chunks_{job['job_id']}" in st.session_state:
+                    chunks = st.session_state[f"job_chunks_{job['job_id']}"]
+                    st.info(f"📊 {len(chunks)} chunks stored for this job")
+                    
+                    if chunks:
+                        chunk_df = pd.DataFrame([{
+                            'file_id': c['file_id'],
+                            'filename': c['filename'],
+                            'chunk_index': c['chunk_index'],
+                            'namespace': c['namespace'],
+                            'uploaded': c['embedding_stored']
+                        } for c in chunks])
+                        st.dataframe(chunk_df, use_container_width=True)
+    else:
+        st.info("No processing history found")
+
+with tab8:
+    st.header("Vector Search Testing")
+    st.markdown("Query your Pinecone index to test stored embeddings")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("Search Configuration")
+        
+        search_query = st.text_area(
+            "Search Query",
+            height=100,
+            help="Enter your search query text"
+        )
+        
+        search_namespace = st.text_input(
+            "Namespace",
+            value=st.session_state.get('default_namespace', 'default'),
+            help="Pinecone namespace to search in"
+        )
+        
+        top_k = st.slider(
+            "Number of Results",
+            min_value=1,
+            max_value=20,
+            value=5,
+            help="How many results to return"
+        )
+        
+        if st.button("🔍 Search", use_container_width=True):
+            if not search_query:
+                st.error("Please enter a search query")
+            elif not st.session_state.get('pinecone_api_key'):
+                st.error("Pinecone API key required")
+            else:
+                with st.spinner("Searching..."):
+                    try:
+                        from utils.embedder import create_embeddings, get_embedding_dimension
+                        from utils.pinecone_uploader import initialize_pinecone
+                        from llama_index.core.schema import TextNode
+                        
+                        config = {
+                            'pinecone_api_key': st.session_state.pinecone_api_key,
+                            'openai_api_key': st.session_state.get('openai_api_key'),
+                            'embedding_model': st.session_state.get('embedding_model'),
+                            'embedding_dimension': st.session_state.get('embedding_dimension', 1536),
+                            'index_name': st.session_state.get('index_name')
+                        }
+                        
+                        index = initialize_pinecone(config)
+                        
+                        query_node = TextNode(text=search_query)
+                        query_embedding = create_embeddings([query_node], config)[0]
+                        
+                        results = index.query(
+                            vector=query_embedding,
+                            top_k=top_k,
+                            namespace=search_namespace,
+                            include_metadata=True
+                        )
+                        
+                        st.session_state.search_results = results
+                        st.success(f"Found {len(results.matches)} results")
+                        
+                    except Exception as e:
+                        st.error(f"Search error: {str(e)}")
+                        st.exception(e)
+    
+    with col2:
+        st.subheader("Search Results")
+        
+        if 'search_results' in st.session_state:
+            results = st.session_state.search_results
+            
+            if results.matches:
+                for idx, match in enumerate(results.matches):
+                    with st.expander(f"Result {idx + 1} - Score: {match.score:.4f}", expanded=(idx==0)):
+                        st.markdown(f"**ID:** `{match.id}`")
+                        st.markdown(f"**Score:** {match.score:.4f}")
+                        
+                        if match.metadata:
+                            st.markdown("**Text:**")
+                            st.text_area(
+                                "Chunk content",
+                                match.metadata.get('text', 'No text available'),
+                                height=200,
+                                key=f"result_{idx}"
+                            )
+                            
+                            st.markdown("**Metadata:**")
+                            metadata_display = {k: v for k, v in match.metadata.items() if k != 'text'}
+                            st.json(metadata_display)
+            else:
+                st.warning("No results found")
+        else:
+            st.info("Enter a query and click Search to see results")
 
 st.markdown("---")
 st.caption("PDF Chunking & Embedding Pipeline v1.0 | Powered by LlamaParse, LlamaIndex, and Pinecone")
