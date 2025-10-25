@@ -188,6 +188,10 @@ def run_scheduled_job(scheduled_job: Dict) -> Dict:
                     config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
                     print(f"  - Using product-specific Pinecone API key")
                 
+                if product_api_keys.get('GOOGLE_CREDENTIALS'):
+                    config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
+                    print(f"  - Using product-specific Google credentials")
+                
                 # Use product-specific Pinecone index
                 config['index_name'] = product_info['pinecone_index']
                 print(f"  - Using product-specific Pinecone index: {product_info['pinecone_index']}")

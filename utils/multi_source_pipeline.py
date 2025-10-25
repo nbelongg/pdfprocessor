@@ -86,7 +86,7 @@ def process_multi_source_pipeline(
         if source_info.get('product_id'):
             product_info = get_product(source_info['product_id'])
             if product_info and product_info['active']:
-                # Get product-specific API keys from environment
+                # Get product-specific API keys and credentials from environment
                 product_api_keys = get_product_api_keys(source_info['product_id'])
                 
                 # Override API keys if product specifies them
@@ -96,6 +96,8 @@ def process_multi_source_pipeline(
                     product_config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
                 if product_api_keys.get('PINECONE_API_KEY'):
                     product_config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
+                if product_api_keys.get('GOOGLE_CREDENTIALS'):
+                    product_config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
                 
                 # Use product-specific Pinecone index
                 product_config['index_name'] = product_info['pinecone_index']
