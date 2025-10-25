@@ -394,89 +394,132 @@ with tab2:
                 st.rerun()
 
 with tab3:
-    st.header("Select Files from Google Drive")
+    st.header("Select Files to Process")
+    st.markdown("Choose which data sources and papers to process")
     
-    col1, col2 = st.columns([2, 1])
+    from utils.database import get_data_sources, get_column_mapping_dict
+    from utils.google_sheets import load_sheet_data
     
-    with col1:
-        st.subheader("Google Sheets Configuration")
-        sheet_url = st.text_input(
-            "Google Sheets URL",
-            value=st.session_state.get('sheet_url', ''),
-            help="Full URL of your Google Sheet with metadata"
-        )
-        if sheet_url:
-            st.session_state.sheet_url = sheet_url
-        
-        sheet_tab = st.text_input(
-            "Sheet Tab Name",
-            value=st.session_state.get('sheet_tab', 'Sheet1'),
-            help="Name of the tab containing your data"
-        )
-        if sheet_tab:
-            st.session_state.sheet_tab = sheet_tab
-        
-        drive_link_column = st.text_input(
-            "Google Drive Link Column",
-            value=st.session_state.get('drive_link_column', 'Drive Link'),
-            help="Column name containing Google Drive PDF links"
-        )
-        if drive_link_column:
-            st.session_state.drive_link_column = drive_link_column
-        
-        if st.button("📥 Load Sheet Data"):
-            if st.session_state.get('google_credentials'):
-                with st.spinner("Loading Google Sheets data..."):
-                    try:
-                        from utils.google_sheets import load_sheet_data
-                        df = load_sheet_data(
-                            sheet_url,
-                            sheet_tab,
-                            st.session_state.get('google_credentials')
-                        )
-                        st.session_state.sheet_data = df
-                        st.success(f"✅ Loaded {len(df)} rows from Google Sheets")
-                    except Exception as e:
-                        st.error(f"❌ Error loading sheet: {str(e)}")
-            else:
-                st.error("❌ Please upload Google Service Account JSON file first")
+    if 'data_sources' not in st.session_state:
+        st.session_state.data_sources = get_data_sources(active_only=True)
     
-    with col2:
-        st.subheader("Data Preview")
-        if 'sheet_data' in st.session_state:
-            st.dataframe(st.session_state.sheet_data.head(), use_container_width=True)
-            st.caption(f"Showing first 5 of {len(st.session_state.sheet_data)} rows")
+    active_sources = [s for s in st.session_state.data_sources if s.get('active', False)]
+    
+    if not active_sources:
+        st.warning("⚠️ No active data sources found. Please add and activate data sources in the 'Data Sources' tab.")
+    else:
+        st.subheader("Select Data Sources")
+        
+        source_selection_mode = st.radio(
+            "Selection Mode",
+            ["Select Specific Sources", "Process All Active Sources"],
+            horizontal=True
+        )
+        
+        if source_selection_mode == "Select Specific Sources":
+            selected_source_ids = st.multiselect(
+                "Choose data sources to process",
+                options=[s['id'] for s in active_sources],
+                format_func=lambda x: next((s['name'] for s in active_sources if s['id'] == x), str(x)),
+                default=[]
+            )
         else:
-            st.info("Load sheet data to preview")
-    
-    st.markdown("---")
-    
-    if 'sheet_data' in st.session_state:
-        st.subheader("Select PDFs to Process")
+            selected_source_ids = [s['id'] for s in active_sources]
+            st.info(f"Will process all {len(selected_source_ids)} active source(s)")
         
-        df = st.session_state.sheet_data
+        st.session_state.selected_source_ids = selected_source_ids
         
-        if drive_link_column in df.columns:
-            pdf_rows = df[df[drive_link_column].notna()]
+        if selected_source_ids:
+            st.markdown("---")
+            st.subheader("Load and Preview Papers")
             
-            select_all = st.checkbox("Select All PDFs", value=False)
-            
-            if select_all:
-                selected_indices = list(range(len(pdf_rows)))
-            else:
-                selected_indices = st.multiselect(
-                    "Choose PDFs to process",
-                    options=list(range(len(pdf_rows))),
-                    format_func=lambda x: f"Row {x+1}: {pdf_rows.iloc[x].get('Title', pdf_rows.iloc[x][drive_link_column][:50])}",
-                    default=[]
-                )
-            
-            st.session_state.selected_pdf_indices = selected_indices
-            st.info(f"📌 Selected {len(selected_indices)} PDF(s) for processing")
-        else:
-            st.warning(f"⚠️ Column '{drive_link_column}' not found in sheet")
+            for source_id in selected_source_ids:
+                source = next((s for s in active_sources if s['id'] == source_id), None)
+                if not source:
+                    continue
+                
+                with st.expander(f"📚 {source['name']} - {source.get('topic', 'No topic')}", expanded=True):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.markdown(f"**Sheet:** {source['sheet_url'][:60]}...")
+                        st.markdown(f"**Tab:** {source['sheet_tab']}")
+                        st.markdown(f"**Namespace:** {source['default_namespace']}")
+                    
+                    with col2:
+                        if st.button(f"📥 Load", key=f"load_{source_id}"):
+                            if st.session_state.get('google_credentials'):
+                                with st.spinner(f"Loading {source['name']}..."):
+                                    try:
+                                        df = load_sheet_data(
+                                            source['sheet_url'],
+                                            source['sheet_tab'],
+                                            st.session_state.get('google_credentials')
+                                        )
+                                        
+                                        if f'source_data_{source_id}' not in st.session_state:
+                                            st.session_state[f'source_data_{source_id}'] = {}
+                                        
+                                        st.session_state[f'source_data_{source_id}']['data'] = df
+                                        st.session_state[f'source_data_{source_id}']['mappings'] = get_column_mapping_dict(source_id)
+                                        st.success(f"✅ Loaded {len(df)} rows")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error: {str(e)}")
+                            else:
+                                st.error("Upload Google credentials first")
+                    
+                    source_data_key = f'source_data_{source_id}'
+                    if source_data_key in st.session_state:
+                        data_info = st.session_state[source_data_key]
+                        df = data_info['data']
+                        mappings = data_info['mappings']
+                        
+                        st.dataframe(df.head(3), use_container_width=True)
+                        st.caption(f"Showing 3 of {len(df)} rows")
+                        
+                        drive_link_col = mappings.get('drive_link', 'Drive Link')
+                        
+                        if drive_link_col in df.columns:
+                            pdf_rows = df[df[drive_link_col].notna()]
+                            
+                            selection_mode = st.radio(
+                                "Paper Selection",
+                                ["Select Specific Papers", "Process All Papers", "Process New Only"],
+                                key=f"mode_{source_id}",
+                                horizontal=True
+                            )
+                            
+                            if selection_mode == "Select Specific Papers":
+                                title_col = mappings.get('paper_title', 'Title')
+                                
+                                selected_indices = st.multiselect(
+                                    "Choose papers",
+                                    options=list(range(len(pdf_rows))),
+                                    format_func=lambda x: f"Row {x+1}: {pdf_rows.iloc[x].get(title_col, pdf_rows.iloc[x][drive_link_col][:40]) if title_col in pdf_rows.columns else pdf_rows.iloc[x][drive_link_col][:40]}",
+                                    default=[],
+                                    key=f"papers_{source_id}"
+                                )
+                                st.session_state[f'selected_indices_{source_id}'] = selected_indices
+                                
+                            elif selection_mode == "Process All Papers":
+                                st.session_state[f'selected_indices_{source_id}'] = list(range(len(pdf_rows)))
+                                st.info(f"Will process all {len(pdf_rows)} papers")
+                                
+                            elif selection_mode == "Process New Only":
+                                last_processed = source.get('last_processed_row', 0)
+                                new_indices = list(range(last_processed, len(pdf_rows)))
+                                st.session_state[f'selected_indices_{source_id}'] = new_indices
+                                st.info(f"Will process {len(new_indices)} new papers (rows {last_processed + 1} onwards)")
+                            
+                            selected = st.session_state.get(f'selected_indices_{source_id}', [])
+                            st.success(f"📌 Selected {len(selected)} paper(s) from this source")
+                        else:
+                            st.error(f"Drive link column '{drive_link_col}' not found")
+                    else:
+                        st.info("Click 'Load' to fetch papers from this source")
 
-with tab3:
+with tab4:
     st.header("Processing Settings")
     
     col1, col2 = st.columns(2)
@@ -650,134 +693,166 @@ with tab3:
             )
             st.session_state.namespace_column = None if namespace_column == "None" else namespace_column
         else:
-            st.info("Load sheet data first to configure metadata mapping")
-
-with tab4:
-    st.header("Preview Chunks")
-    st.markdown("Preview how your PDFs will be chunked before uploading to Pinecone")
-    
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.subheader("Preview Settings")
-        
-        preview_limit = st.number_input(
-            "Number of PDFs to Preview",
-            min_value=1,
-            max_value=10,
-            value=1,
-            help="How many PDFs to parse and chunk for preview"
-        )
-        
-        if st.button("🔍 Generate Preview", use_container_width=True):
-            selected_indices = st.session_state.get('selected_pdf_indices', [])[:preview_limit]
-            
-            if not selected_indices:
-                st.error("❌ Please select at least one PDF")
-            elif not st.session_state.get('llama_api_key'):
-                st.error("❌ LlamaParse API key required")
-            elif not st.session_state.get('sheet_data') is not None:
-                st.error("❌ Please load sheet data first")
-            else:
-                with st.spinner("Generating preview..."):
-                    try:
-                        from utils.pipeline import process_pipeline
-                        
-                        results = process_pipeline(
-                            sheet_data=st.session_state.sheet_data,
-                            selected_indices=selected_indices,
-                            config={
-                                'llama_api_key': st.session_state.llama_api_key,
-                                'google_credentials': st.session_state.get('google_credentials'),
-                                'parsing_mode': st.session_state.get('parsing_mode', 'auto'),
-                                'result_type': st.session_state.get('result_type', 'markdown'),
-                                'language': st.session_state.get('language', 'en'),
-                                'use_vendor_multimodal': st.session_state.get('use_vendor_multimodal', True),
-                                'page_separator': st.session_state.get('page_separator', '\\n---\\n'),
-                                'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
-                                'chunk_size': st.session_state.get('chunk_size', 512),
-                                'chunk_overlap': st.session_state.get('chunk_overlap', 50),
-                                'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
-                                'embedding_model': st.session_state.get('embedding_model'),
-                                'metadata_columns': st.session_state.get('metadata_columns', []),
-                                'namespace_column': st.session_state.get('namespace_column'),
-                                'drive_link_column': st.session_state.get('drive_link_column', 'Drive Link'),
-                                'default_namespace': st.session_state.get('default_namespace', 'default'),
-                                'sheet_url': st.session_state.get('sheet_url', ''),
-                                'sheet_tab': st.session_state.get('sheet_tab', 'Sheet1')
-                            },
-                            preview_mode=True
-                        )
-                        
-                        st.session_state.preview_results = results
-                        st.success(f"✅ Preview generated for {results['total_pdfs']} PDF(s)")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error generating preview: {str(e)}")
-                        st.exception(e)
-    
-    with col2:
-        st.subheader("Chunk Preview")
-        
-        if 'preview_results' in st.session_state:
-            results = st.session_state.preview_results
-            chunks = results.get('preview_chunks', [])
-            
-            if chunks:
-                st.info(f"📊 Generated {len(chunks)} chunks from {results['total_pdfs']} PDF(s)")
-                
-                chunk_idx = st.number_input(
-                    "Chunk to view",
-                    min_value=0,
-                    max_value=len(chunks)-1,
-                    value=0
-                )
-                
-                chunk = chunks[chunk_idx]
-                
-                st.markdown(f"**Chunk {chunk_idx + 1} of {len(chunks)}**")
-                st.markdown(f"**Namespace:** `{chunk['namespace']}`")
-                
-                with st.expander("📝 Chunk Text", expanded=True):
-                    st.text_area(
-                        "Content",
-                        chunk['text'],
-                        height=300,
-                        key=f"chunk_{chunk_idx}"
-                    )
-                
-                with st.expander("🏷️ Metadata", expanded=False):
-                    st.json(chunk['metadata'])
-            else:
-                st.warning("No chunks generated")
-        else:
-            st.info("Click 'Generate Preview' to see chunks")
+            st.info("Note: Metadata is now configured per data source in the Data Sources tab")
 
 with tab5:
+    st.header("Preview Chunks")
+    st.markdown("Preview how your papers will be chunked before uploading to Pinecone")
+    
+    selected_source_ids = st.session_state.get('selected_source_ids', [])
+    
+    if not selected_source_ids:
+        st.warning("⚠️ Please select data sources in the 'Select Files' tab first")
+    else:
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.subheader("Preview Settings")
+            
+            preview_limit = st.number_input(
+                "Papers per Source",
+                min_value=1,
+                max_value=5,
+                value=1,
+                help="How many papers to preview from each selected source"
+            )
+            
+            if st.button("🔍 Generate Preview", use_container_width=True):
+                from utils.multi_source_pipeline import process_multi_source_pipeline
+                
+                source_configs = []
+                for source_id in selected_source_ids:
+                    source_data_key = f'source_data_{source_id}'
+                    if source_data_key in st.session_state:
+                        data_info = st.session_state[source_data_key]
+                        selected_indices_key = f'selected_indices_{source_id}'
+                        indices = st.session_state.get(selected_indices_key, [])[:preview_limit]
+                        
+                        if indices:
+                            source_configs.append({
+                                'source_id': source_id,
+                                'data': data_info['data'],
+                                'selected_indices': indices
+                            })
+                
+                if not source_configs:
+                    st.error("❌ No papers selected for preview")
+                elif not st.session_state.get('llama_api_key'):
+                    st.error("❌ LlamaParse API key required")
+                else:
+                    with st.spinner("Generating preview..."):
+                        try:
+                            results = process_multi_source_pipeline(
+                                source_configs=source_configs,
+                                config={
+                                    'llama_api_key': st.session_state.llama_api_key,
+                                    'google_credentials': st.session_state.get('google_credentials'),
+                                    'parsing_mode': st.session_state.get('parsing_mode', 'auto'),
+                                    'result_type': st.session_state.get('result_type', 'markdown'),
+                                    'language': st.session_state.get('language', 'en'),
+                                    'use_vendor_multimodal': st.session_state.get('use_vendor_multimodal', True),
+                                    'page_separator': st.session_state.get('page_separator', '\\n---\\n'),
+                                    'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
+                                    'chunk_size': st.session_state.get('chunk_size', 512),
+                                    'chunk_overlap': st.session_state.get('chunk_overlap', 50),
+                                    'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
+                                    'embedding_model': st.session_state.get('embedding_model')
+                                },
+                                preview_mode=True
+                            )
+                            
+                            st.session_state.preview_results = results
+                            st.success(f"✅ Preview: {results['total_pdfs']} papers, {results['total_chunks']} chunks")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+                            st.exception(e)
+        
+        with col2:
+            st.subheader("Chunk Preview")
+            
+            if 'preview_results' in st.session_state:
+                results = st.session_state.preview_results
+                chunks = results.get('preview_chunks', [])
+                
+                if chunks:
+                    st.info(f"📊 {len(chunks)} chunks from {results['total_pdfs']} papers")
+                    
+                    chunk_idx = st.number_input(
+                        "Chunk to view",
+                        min_value=0,
+                        max_value=len(chunks)-1,
+                        value=0,
+                        key="preview_chunk_idx"
+                    )
+                    
+                    chunk = chunks[chunk_idx]
+                    
+                    st.markdown(f"**Chunk {chunk_idx + 1} of {len(chunks)}**")
+                    st.markdown(f"**Source:** {chunk['metadata'].get('source', 'Unknown')}")
+                    st.markdown(f"**Namespace:** `{chunk['namespace']}`")
+                    
+                    with st.expander("📝 Chunk Text", expanded=True):
+                        st.text_area(
+                            "Content",
+                            chunk['text'],
+                            height=300,
+                            key=f"preview_chunk_{chunk_idx}"
+                        )
+                    
+                    with st.expander("🏷️ Metadata", expanded=False):
+                        st.json(chunk['metadata'])
+                else:
+                    st.warning("No chunks generated")
+            else:
+                st.info("Click 'Generate Preview' to see chunks")
+
+with tab6:
     st.header("Process & Upload to Pinecone")
+    
+    selected_source_ids = st.session_state.get('selected_source_ids', [])
+    
+    total_selected = 0
+    total_sources = len(selected_source_ids)
+    
+    for source_id in selected_source_ids:
+        indices = st.session_state.get(f'selected_indices_{source_id}', [])
+        total_selected += len(indices)
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("PDFs Selected", len(st.session_state.get('selected_pdf_indices', [])))
+        st.metric("Data Sources", total_sources)
     with col2:
-        st.metric("Total Rows in Sheet", len(st.session_state.get('sheet_data', [])))
+        st.metric("Papers Selected", total_selected)
     with col3:
-        st.metric("Metadata Columns", len(st.session_state.get('metadata_columns', [])))
+        st.metric("Ready to Process", "✅" if total_selected > 0 else "❌")
     
     st.markdown("---")
     
     if st.button("🚀 Start Processing Pipeline", type="primary", use_container_width=True):
-        selected_indices = st.session_state.get('selected_pdf_indices', [])
+        from utils.multi_source_pipeline import process_multi_source_pipeline
         
-        if not selected_indices:
-            st.error("❌ Please select at least one PDF to process")
+        source_configs = []
+        for source_id in selected_source_ids:
+            source_data_key = f'source_data_{source_id}'
+            if source_data_key in st.session_state:
+                data_info = st.session_state[source_data_key]
+                selected_indices = st.session_state.get(f'selected_indices_{source_id}', [])
+                
+                if selected_indices:
+                    source_configs.append({
+                        'source_id': source_id,
+                        'data': data_info['data'],
+                        'selected_indices': selected_indices
+                    })
+        
+        if not source_configs:
+            st.error("❌ Please select papers to process")
         elif not st.session_state.get('llama_api_key'):
             st.error("❌ LlamaParse API key required")
         elif not st.session_state.get('pinecone_api_key'):
             st.error("❌ Pinecone API key required")
-        elif not st.session_state.get('sheet_data') is not None:
-            st.error("❌ Please load sheet data first")
         else:
             st.session_state.processing_state = "running"
             
@@ -785,11 +860,8 @@ with tab5:
             status_text = st.empty()
             
             try:
-                from utils.pipeline import process_pipeline
-                
-                results = process_pipeline(
-                    sheet_data=st.session_state.sheet_data,
-                    selected_indices=selected_indices,
+                results = process_multi_source_pipeline(
+                    source_configs=source_configs,
                     config={
                         'llama_api_key': st.session_state.llama_api_key,
                         'pinecone_api_key': st.session_state.pinecone_api_key,
@@ -807,13 +879,7 @@ with tab5:
                         'embedding_model': st.session_state.get('embedding_model'),
                         'embedding_dimension': st.session_state.get('embedding_dimension', 1536),
                         'pinecone_environment': st.session_state.get('pinecone_environment'),
-                        'index_name': st.session_state.get('index_name'),
-                        'default_namespace': st.session_state.get('default_namespace', 'default'),
-                        'metadata_columns': st.session_state.get('metadata_columns', []),
-                        'namespace_column': st.session_state.get('namespace_column'),
-                        'drive_link_column': st.session_state.get('drive_link_column', 'Drive Link'),
-                        'sheet_url': st.session_state.get('sheet_url', ''),
-                        'sheet_tab': st.session_state.get('sheet_tab', 'Sheet1')
+                        'index_name': st.session_state.get('index_name')
                     },
                     progress_callback=lambda pct, msg: (progress_bar.progress(pct), status_text.text(msg)),
                     preview_mode=False
@@ -830,7 +896,7 @@ with tab5:
                 st.error(f"❌ Error during processing: {str(e)}")
                 st.exception(e)
 
-with tab6:
+with tab7:
     st.header("Processing Status & Logs")
     
     if st.session_state.processing_state == "running":
