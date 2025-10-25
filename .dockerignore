@@ -1,0 +1,84 @@
+# Dockerignore for Streamlit PDF Processing App
+# Excludes large cached files and development dependencies from Docker image
+
+# Cache directories - CRITICAL to exclude
+.cache/
+.cache/**
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# HuggingFace cache (models downloaded at runtime)
+.huggingface/
+transformers_cache/
+sentence_transformers/
+
+# UV package manager cache
+.upm/
+
+# Development and version control
+.git/
+.gitignore
+.gitattributes
+*.md
+README.md
+SCHEDULER_DEPLOYMENT.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files (managed via Replit Secrets)
+.env
+.env.local
+.env.*.local
+
+# Test files
+tests/
+test_*.py
+*_test.py
+pytest.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+*.logs
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Documentation
+docs/
+*.rst
+
+# Local data files (should be in production storage)
+data/
+uploads/
+downloads/
+*.pdf
+*.csv
+*.xlsx
+
+# Python virtual environments (not needed in container)
+venv/
+env/
+ENV/
+.venv/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Deployment ignore file itself
+.deployignore

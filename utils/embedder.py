@@ -3,6 +3,11 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.schema import TextNode
 from typing import List, Dict
 import numpy as np
+import os
+
+os.environ['HF_HOME'] = '/tmp/.huggingface'
+os.environ['TRANSFORMERS_CACHE'] = '/tmp/.huggingface/transformers'
+os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/tmp/.huggingface/sentence-transformers'
 
 def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
     """
