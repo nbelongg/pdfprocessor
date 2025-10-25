@@ -54,12 +54,13 @@ if 'processing_state' not in st.session_state:
     st.session_state.processing_state = None
 
 # Initialize database tables
-from utils.database import init_products_table
+from utils.database import init_products_table, init_celery_tables
 
 try:
     init_products_table()
+    init_celery_tables()
 except Exception as e:
-    st.error(f"Products table initialization: {str(e)}")
+    st.error(f"Database initialization: {str(e)}")
 
 # Sidebar Navigation
 st.sidebar.title("📑 Navigation")
@@ -72,6 +73,7 @@ selected_page = st.sidebar.radio(
         "📁 Select Files", 
         "👁️ Preview Chunks",
         "🚀 Process & Upload",
+        "⚙️ Job Queue",
         "📊 Status",
         "📜 History",
         "🔍 Search Test"
@@ -1240,6 +1242,168 @@ elif selected_page == "🚀 Process & Upload":
                 st.session_state.processing_state = "error"
                 st.error(f"❌ Error during processing: {str(e)}")
                 st.exception(e)
+
+elif selected_page == "⚙️ Job Queue":
+    st.header("⚙️ Background Job Queue")
+    
+    st.info("""
+    **Background Processing with Celery**
+    
+    Jobs submitted here run in the background using Celery workers. You can close your browser and jobs will continue processing.
+    
+    **Note:** Requires Redis connection. Set the following secrets:
+    - `REDIS_HOST` - Redis server hostname
+    - `REDIS_PORT` - Redis port (default: 6379)
+    - `REDIS_PASSWORD` - Redis password  
+    - `REDIS_USE_TLS` - Set to "true" for TLS (Upstash)
+    """)
+    
+    tab1, tab2, tab3 = st.tabs(["📤 Submit Job", "📊 Active Jobs", "📜 Job History"])
+    
+    with tab1:
+        st.subheader("Submit New Processing Job")
+        
+        selected_source_ids = st.session_state.get('selected_source_ids', [])
+        
+        total_selected = 0
+        for source_id in selected_source_ids:
+            indices = st.session_state.get(f'selected_indices_{source_id}', [])
+            total_selected += len(indices)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Papers Selected", total_selected)
+        with col2:
+            st.metric("Ready", "✅" if total_selected > 0 else "❌")
+        
+        if st.button("🚀 Submit to Background Queue", type="primary", use_container_width=True):
+            if total_selected == 0:
+                st.error("❌ No papers selected. Go to 'Select Files' page first.")
+            else:
+                try:
+                    from tasks import process_batch_task
+                    from utils.database import create_celery_job
+                    
+                    source_configs = []
+                    for source_id in selected_source_ids:
+                        source_data_key = f'source_data_{source_id}'
+                        if source_data_key in st.session_state:
+                            data_info = st.session_state[source_data_key]
+                            selected_indices = st.session_state.get(f'selected_indices_{source_id}', [])
+                            
+                            if selected_indices:
+                                source_configs.append({
+                                    'source_id': source_id,
+                                    'data': data_info['data'],
+                                    'selected_indices': selected_indices
+                                })
+                    
+                    config = {
+                        'llama_api_key': st.session_state.get('llama_api_key'),
+                        'pinecone_api_key': st.session_state.get('pinecone_api_key'),
+                        'openai_api_key': st.session_state.get('openai_api_key'),
+                        'google_credentials': st.session_state.get('google_credentials'),
+                        'parsing_mode': st.session_state.get('parsing_mode', 'auto'),
+                        'result_type': st.session_state.get('result_type', 'markdown'),
+                        'language': st.session_state.get('language', 'en'),
+                        'use_vendor_multimodal': st.session_state.get('use_vendor_multimodal', True),
+                        'page_separator': st.session_state.get('page_separator', '\\n---\\n'),
+                        'chunking_strategy': st.session_state.get('chunking_strategy', 'Token-based'),
+                        'chunk_size': st.session_state.get('chunk_size', 512),
+                        'chunk_overlap': st.session_state.get('chunk_overlap', 50),
+                        'semantic_buffer_size': st.session_state.get('semantic_buffer_size', 1),
+                        'embedding_model': st.session_state.get('embedding_model'),
+                        'embedding_dimension': st.session_state.get('embedding_dimension', 1536),
+                        'pinecone_environment': st.session_state.get('pinecone_environment'),
+                        'index_name': st.session_state.get('index_name')
+                    }
+                    
+                    task = process_batch_task.delay(
+                        source_id=source_configs[0]['source_id'],
+                        selected_indices=source_configs[0]['selected_indices'],
+                        config=config,
+                        preview_mode=False
+                    )
+                    
+                    create_celery_job(
+                        task_id=task.id,
+                        task_name='Batch PDF Processing',
+                        source_id=source_configs[0]['source_id'],
+                        submitted_by='streamlit_user'
+                    )
+                    
+                    st.success(f"✅ Job submitted! Task ID: `{task.id}`")
+                    st.info("Job is running in background. Check the 'Active Jobs' tab for progress.")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error submitting job: {str(e)}")
+                    st.exception(e)
+    
+    with tab2:
+        st.subheader("Active & Pending Jobs")
+        
+        if st.button("🔄 Refresh", key="refresh_active"):
+            st.rerun()
+        
+        from utils.database import get_all_celery_jobs
+        
+        active_jobs = get_all_celery_jobs(limit=50, status_filter=None)
+        active_jobs = [j for j in active_jobs if j['status'] in ['pending', 'running', 'PROGRESS']]
+        
+        if active_jobs:
+            for job in active_jobs:
+                with st.expander(f"🔄 {job['task_name']} - {job['status'].upper()}", expanded=True):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Status", job['status'])
+                    with col2:
+                        st.metric("Progress", f"{job.get('progress_current', 0)}/{job.get('progress_total', 0)}")
+                    with col3:
+                        st.metric("Task ID", job['task_id'][:8] + "...")
+                    
+                    if job.get('progress_message'):
+                        st.info(job['progress_message'])
+                    
+                    st.caption(f"Submitted: {job['created_at']}")
+        else:
+            st.info("No active jobs")
+    
+    with tab3:
+        st.subheader("Completed & Failed Jobs")
+        
+        if st.button("🔄 Refresh", key="refresh_history"):
+            st.rerun()
+        
+        from utils.database import get_all_celery_jobs
+        
+        history_jobs = get_all_celery_jobs(limit=100)
+        history_jobs = [j for j in history_jobs if j['status'] in ['completed', 'failed', 'cancelled']]
+        
+        if history_jobs:
+            for job in history_jobs[:20]:
+                status_icon = "✅" if job['status'] == 'completed' else "❌" if job['status'] == 'failed' else "⏸️"
+                
+                with st.expander(f"{status_icon} {job['task_name']} - {job['status'].upper()}"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Status", job['status'])
+                    with col2:
+                        st.metric("Task ID", job['task_id'][:12] + "...")
+                    with col3:
+                        if job.get('completed_at'):
+                            st.metric("Completed", str(job['completed_at'])[:16])
+                    
+                    if job.get('result'):
+                        st.json(job['result'])
+                    
+                    if job.get('error_message'):
+                        st.error(f"Error: {job['error_message']}")
+                    
+                    st.caption(f"Submitted: {job['created_at']}")
+        else:
+            st.info("No completed jobs yet")
 
 elif selected_page == "📊 Status":
     st.header("Processing Status & Logs")

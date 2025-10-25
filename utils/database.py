@@ -938,3 +938,139 @@ def get_product_api_keys(product_id: int) -> Dict:
                 api_keys['GOOGLE_CREDENTIALS'] = None
     
     return api_keys
+
+def init_celery_tables():
+    """Initialize Celery job tracking tables."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS celery_jobs (
+                    id SERIAL PRIMARY KEY,
+                    task_id VARCHAR(255) UNIQUE NOT NULL,
+                    task_name VARCHAR(255) NOT NULL,
+                    source_id INTEGER REFERENCES data_sources(id) ON DELETE SET NULL,
+                    status VARCHAR(50) DEFAULT 'pending',
+                    progress_current INTEGER DEFAULT 0,
+                    progress_total INTEGER DEFAULT 0,
+                    progress_message TEXT,
+                    result JSONB,
+                    error_message TEXT,
+                    submitted_by VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP
+                )
+            """)
+            
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_celery_jobs_task_id ON celery_jobs(task_id)
+            """)
+            
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_celery_jobs_status ON celery_jobs(status)
+            """)
+            
+            conn.commit()
+    finally:
+        conn.close()
+
+def create_celery_job(task_id: str, task_name: str, source_id: Optional[int] = None, submitted_by: str = 'system') -> int:
+    """Create a new Celery job record."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO celery_jobs (task_id, task_name, source_id, submitted_by, status)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (task_id, task_name, source_id, submitted_by, 'pending')
+            )
+            job_id = cur.fetchone()['id']
+            conn.commit()
+            return job_id
+    finally:
+        conn.close()
+
+def update_celery_job_status(task_id: str, status: str, **kwargs):
+    """Update Celery job status and metadata."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            set_clauses = ["status = %s", "updated_at = CURRENT_TIMESTAMP"]
+            values = [status]
+            
+            if 'progress_current' in kwargs:
+                set_clauses.append("progress_current = %s")
+                values.append(kwargs['progress_current'])
+            if 'progress_total' in kwargs:
+                set_clauses.append("progress_total = %s")
+                values.append(kwargs['progress_total'])
+            if 'progress_message' in kwargs:
+                set_clauses.append("progress_message = %s")
+                values.append(kwargs['progress_message'])
+            if 'result' in kwargs:
+                set_clauses.append("result = %s")
+                values.append(Json(kwargs['result']))
+            if 'error_message' in kwargs:
+                set_clauses.append("error_message = %s")
+                values.append(kwargs['error_message'])
+            if status in ['completed', 'failed']:
+                set_clauses.append("completed_at = CURRENT_TIMESTAMP")
+            
+            values.append(task_id)
+            
+            cur.execute(
+                f"UPDATE celery_jobs SET {', '.join(set_clauses)} WHERE task_id = %s",
+                values
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def get_celery_job(task_id: str) -> Optional[Dict]:
+    """Get a Celery job by task ID."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM celery_jobs WHERE task_id = %s",
+                (task_id,)
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+def get_all_celery_jobs(limit: int = 100, status_filter: Optional[str] = None) -> List[Dict]:
+    """Get all Celery jobs with optional status filter."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            if status_filter:
+                cur.execute(
+                    """
+                    SELECT * FROM celery_jobs 
+                    WHERE status = %s
+                    ORDER BY created_at DESC 
+                    LIMIT %s
+                    """,
+                    (status_filter, limit)
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT * FROM celery_jobs 
+                    ORDER BY created_at DESC 
+                    LIMIT %s
+                    """,
+                    (limit,)
+                )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+def cancel_celery_job(task_id: str):
+    """Mark a Celery job as cancelled."""
+    update_celery_job_status(task_id, 'cancelled')
