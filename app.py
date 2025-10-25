@@ -63,10 +63,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
 ])
 
 # Initialize database tables
-from utils.database import (
-    init_data_source_tables, init_deduplication_tables, 
-    init_scheduled_jobs_table, init_products_table
-)
+from utils.database import init_products_table
 
 try:
     init_products_table()
