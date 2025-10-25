@@ -1,0 +1,42 @@
+# Deployment Ignore File
+# Excludes large cached files and development dependencies from deployment
+
+# Cache directories
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Development files
+.git/
+.gitignore
+*.md
+SCHEDULER_DEPLOYMENT.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Environment files (secrets are managed separately)
+.env
+.env.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
