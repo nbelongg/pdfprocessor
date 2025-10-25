@@ -12,6 +12,7 @@ Preferred communication style: Simple, everyday language.
 - **Frontend**: Streamlit for interactive user interface.
 - **Authentication**: Password-based via environment variables.
 - **State Management**: Streamlit session state.
+- **Background Processing**: Celery with Redis message broker for scalable, fault-tolerant job queue system.
 
 ### PDF Processing Pipeline
 1.  **Input Layer**: Google Sheets integration for batch configuration and metadata.
@@ -20,6 +21,14 @@ Preferred communication style: Simple, everyday language.
 4.  **Chunking Layer**: Multiple strategies including token-based (`TokenTextSplitter`), sentence-based (`SentenceSplitter`), and semantic (`SemanticSplitterNodeParser`).
 5.  **Embedding Layer**: OpenAI embeddings only (text-embedding-3-small, text-embedding-3-large). HuggingFace removed for deployment optimization.
 6.  **Storage Layer**: Pinecone vector database (serverless, AWS us-east-1, cosine similarity) for vector storage, with namespace support and batch upsert.
+
+### Background Job Queue System (Celery)
+-   **Message Broker**: Redis (Upstash serverless recommended) for task queue and result backend.
+-   **Workers**: Celery workers running concurrently (default: 3 workers) to process PDF batches.
+-   **Task Retry Logic**: Exponential backoff with max 3 retries for fault tolerance.
+-   **Job Tracking**: PostgreSQL tables (`celery_jobs`) for job status, progress, and results.
+-   **Monitoring**: Real-time job queue UI with active jobs, progress tracking, and history.
+-   **Scalability**: Handle 100-200+ papers without browser timeouts or blocking the UI.
 
 ### Configuration & Data Flow
 -   Environment variables for API keys and service account JSON for Google Cloud.
