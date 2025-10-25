@@ -12,6 +12,39 @@ def get_db_connection():
         cursor_factory=RealDictCursor
     )
 
+def init_products_table():
+    """Initialize products table."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL,
+                    description TEXT,
+                    pinecone_index VARCHAR(255) NOT NULL,
+                    llamaparse_api_key_secret VARCHAR(255),
+                    openai_api_key_secret VARCHAR(255),
+                    pinecone_api_key_secret VARCHAR(255),
+                    default_chunking_strategy VARCHAR(50) DEFAULT 'Token-based',
+                    default_chunk_size INTEGER DEFAULT 512,
+                    default_embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
+                    active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Add product_id to data_sources if not exists
+            cur.execute("""
+                ALTER TABLE data_sources 
+                ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES products(id) ON DELETE SET NULL
+            """)
+            
+            conn.commit()
+    finally:
+        conn.close()
+
 def create_processing_job(job_id: str, config: Dict) -> int:
     """Create a new processing job in the database."""
     conn = get_db_connection()
@@ -229,18 +262,18 @@ def delete_metadata_transformation(name: str):
 # Data Sources Functions
 
 def create_data_source(name: str, sheet_url: str, sheet_tab: str, topic: str = None, 
-                       default_namespace: str = 'default') -> int:
+                       default_namespace: str = 'default', product_id: int = None) -> int:
     """Create a new data source."""
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO data_sources (name, sheet_url, sheet_tab, topic, default_namespace)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO data_sources (name, sheet_url, sheet_tab, topic, default_namespace, product_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (name, sheet_url, sheet_tab, topic, default_namespace)
+                (name, sheet_url, sheet_tab, topic, default_namespace, product_id)
             )
             result = cur.fetchone()
             conn.commit()
@@ -286,7 +319,7 @@ def update_data_source(source_id: int, **kwargs):
             set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
             values = []
             
-            for key in ['name', 'sheet_url', 'sheet_tab', 'topic', 'default_namespace', 'active']:
+            for key in ['name', 'sheet_url', 'sheet_tab', 'topic', 'default_namespace', 'active', 'product_id']:
                 if key in kwargs:
                     set_clauses.append(f"{key} = %s")
                     values.append(kwargs[key])
@@ -677,3 +710,153 @@ def delete_scheduled_job(job_id: int):
             conn.commit()
     finally:
         conn.close()
+
+# ============================================
+# PRODUCT MANAGEMENT FUNCTIONS
+# ============================================
+
+def get_products(active_only: bool = False) -> List[Dict]:
+    """Get all products."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            if active_only:
+                cur.execute("SELECT * FROM products WHERE active = TRUE ORDER BY name")
+            else:
+                cur.execute("SELECT * FROM products ORDER BY name")
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+def get_product(product_id: int) -> Optional[Dict]:
+    """Get a single product by ID."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+def create_product(
+    name: str,
+    pinecone_index: str,
+    description: str = None,
+    llamaparse_secret: str = None,
+    openai_secret: str = None,
+    pinecone_secret: str = None,
+    chunking_strategy: str = 'Token-based',
+    chunk_size: int = 512,
+    embedding_model: str = 'text-embedding-3-small'
+) -> int:
+    """Create a new product."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO products 
+                (name, description, pinecone_index, llamaparse_api_key_secret,
+                 openai_api_key_secret, pinecone_api_key_secret,
+                 default_chunking_strategy, default_chunk_size, default_embedding_model)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (name, description, pinecone_index, llamaparse_secret, openai_secret,
+                 pinecone_secret, chunking_strategy, chunk_size, embedding_model)
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return result['id'] if result else None
+    finally:
+        conn.close()
+
+def update_product(
+    product_id: int,
+    name: str = None,
+    description: str = None,
+    pinecone_index: str = None,
+    llamaparse_secret: str = None,
+    openai_secret: str = None,
+    pinecone_secret: str = None,
+    chunking_strategy: str = None,
+    chunk_size: int = None,
+    embedding_model: str = None,
+    active: bool = None
+):
+    """Update a product."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
+            values = []
+            
+            if name is not None:
+                set_clauses.append("name = %s")
+                values.append(name)
+            if description is not None:
+                set_clauses.append("description = %s")
+                values.append(description)
+            if pinecone_index is not None:
+                set_clauses.append("pinecone_index = %s")
+                values.append(pinecone_index)
+            if llamaparse_secret is not None:
+                set_clauses.append("llamaparse_api_key_secret = %s")
+                values.append(llamaparse_secret)
+            if openai_secret is not None:
+                set_clauses.append("openai_api_key_secret = %s")
+                values.append(openai_secret)
+            if pinecone_secret is not None:
+                set_clauses.append("pinecone_api_key_secret = %s")
+                values.append(pinecone_secret)
+            if chunking_strategy is not None:
+                set_clauses.append("default_chunking_strategy = %s")
+                values.append(chunking_strategy)
+            if chunk_size is not None:
+                set_clauses.append("default_chunk_size = %s")
+                values.append(chunk_size)
+            if embedding_model is not None:
+                set_clauses.append("default_embedding_model = %s")
+                values.append(embedding_model)
+            if active is not None:
+                set_clauses.append("active = %s")
+                values.append(active)
+            
+            values.append(product_id)
+            
+            cur.execute(
+                f"UPDATE products SET {', '.join(set_clauses)} WHERE id = %s",
+                values
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def delete_product(product_id: int):
+    """Delete a product."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM products WHERE id = %s", (product_id,))
+            conn.commit()
+    finally:
+        conn.close()
+
+def get_product_api_keys(product_id: int) -> Dict[str, str]:
+    """Get API keys for a product from environment variables."""
+    product = get_product(product_id)
+    if not product:
+        return {}
+    
+    api_keys = {}
+    
+    if product.get('llamaparse_api_key_secret'):
+        api_keys['LLAMA_CLOUD_API_KEY'] = os.getenv(product['llamaparse_api_key_secret'], '')
+    
+    if product.get('openai_api_key_secret'):
+        api_keys['OPENAI_API_KEY'] = os.getenv(product['openai_api_key_secret'], '')
+    
+    if product.get('pinecone_api_key_secret'):
+        api_keys['PINECONE_API_KEY'] = os.getenv(product['pinecone_api_key_secret'], '')
+    
+    return api_keys

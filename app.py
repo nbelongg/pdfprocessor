@@ -49,8 +49,9 @@ st.markdown("Process PDFs from Google Drive using LlamaParse, chunk them, create
 if 'processing_state' not in st.session_state:
     st.session_state.processing_state = None
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🔑 Configuration",
+    "🏢 Products",
     "📚 Data Sources",
     "📁 Select Files", 
     "⚙️ Processing Settings", 
@@ -60,6 +61,17 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📜 History",
     "🔍 Search Test"
 ])
+
+# Initialize database tables
+from utils.database import (
+    init_data_source_tables, init_deduplication_tables, 
+    init_scheduled_jobs_table, init_products_table
+)
+
+try:
+    init_products_table()
+except Exception as e:
+    st.sidebar.warning(f"Products table initialization: {str(e)}")
 
 with tab1:
     st.header("API Configuration")
@@ -143,6 +155,195 @@ with tab1:
         st.success("✅ All required API keys configured!")
 
 with tab2:
+    st.header("Product Management")
+    st.markdown("Manage products/startups with separate Pinecone indexes and API keys")
+    
+    from utils.database import (
+        get_products, create_product, update_product, delete_product, get_product
+    )
+    
+    subtab1, subtab2 = st.tabs(["📋 View Products", "➕ Add/Edit Product"])
+    
+    with subtab1:
+        st.subheader("Existing Products")
+        
+        if st.button("🔄 Refresh Products"):
+            st.session_state.products = get_products()
+        
+        if 'products' not in st.session_state:
+            st.session_state.products = get_products()
+        
+        products = st.session_state.products
+        
+        if products:
+            for product in products:
+                status_icon = "✅" if product['active'] else "❌"
+                with st.expander(f"{status_icon} {product['name']}"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(f"**Description:** {product.get('description', 'N/A')}")
+                        st.markdown(f"**Pinecone Index:** `{product['pinecone_index']}`")
+                        st.markdown(f"**Status:** {'Active' if product['active'] else 'Inactive'}")
+                    
+                    with col2:
+                        st.markdown(f"**LlamaParse Secret:** `{product.get('llamaparse_api_key_secret', 'Not set')}`")
+                        st.markdown(f"**OpenAI Secret:** `{product.get('openai_api_key_secret', 'Not set')}`")
+                        st.markdown(f"**Pinecone Secret:** `{product.get('pinecone_api_key_secret', 'Not set')}`")
+                    
+                    st.markdown("**Default Settings:**")
+                    st.markdown(f"- Chunking: {product.get('default_chunking_strategy', 'N/A')} (size: {product.get('default_chunk_size', 'N/A')})")
+                    st.markdown(f"- Embedding: {product.get('default_embedding_model', 'N/A')}")
+                    
+                    col_edit, col_delete, col_toggle = st.columns(3)
+                    with col_edit:
+                        if st.button(f"✏️ Edit", key=f"edit_product_{product['id']}"):
+                            st.session_state.edit_product_id = product['id']
+                            st.rerun()
+                    with col_delete:
+                        if st.button(f"🗑️ Delete", key=f"delete_product_{product['id']}"):
+                            delete_product(product['id'])
+                            st.session_state.products = get_products()
+                            st.success(f"Deleted product: {product['name']}")
+                            st.rerun()
+                    with col_toggle:
+                        new_status = not product['active']
+                        if st.button(f"{'Activate' if not product['active'] else 'Deactivate'}", key=f"toggle_product_{product['id']}"):
+                            update_product(product['id'], active=new_status)
+                            st.session_state.products = get_products()
+                            st.rerun()
+        else:
+            st.info("No products configured yet. Create one in the 'Add/Edit Product' tab.")
+    
+    with subtab2:
+        st.subheader("Add or Edit Product")
+        
+        edit_mode = 'edit_product_id' in st.session_state
+        
+        if edit_mode:
+            product_to_edit = get_product(st.session_state.edit_product_id)
+            st.info(f"Editing: {product_to_edit['name']}")
+        
+        product_name = st.text_input(
+            "Product/Startup Name",
+            value=product_to_edit['name'] if edit_mode else "",
+            help="e.g., 'Startup A', 'Research Project B'"
+        )
+        
+        product_description = st.text_area(
+            "Description",
+            value=product_to_edit.get('description', '') if edit_mode else "",
+            help="Brief description of this product/startup"
+        )
+        
+        st.markdown("### Pinecone Configuration")
+        pinecone_index = st.text_input(
+            "Pinecone Index Name",
+            value=product_to_edit['pinecone_index'] if edit_mode else "",
+            help="The Pinecone index where vectors for this product will be stored"
+        )
+        
+        st.markdown("### API Key Secrets")
+        st.info("💡 Set these secret names in Replit Secrets. The app will read the actual keys from environment variables.")
+        
+        llamaparse_secret = st.text_input(
+            "LlamaParse API Key Secret Name",
+            value=product_to_edit.get('llamaparse_api_key_secret', '') if edit_mode else "",
+            placeholder="e.g., PRODUCT_A_LLAMAPARSE_KEY",
+            help="Name of the Replit secret containing the LlamaParse API key"
+        )
+        
+        openai_secret = st.text_input(
+            "OpenAI API Key Secret Name",
+            value=product_to_edit.get('openai_api_key_secret', '') if edit_mode else "",
+            placeholder="e.g., PRODUCT_A_OPENAI_KEY",
+            help="Name of the Replit secret containing the OpenAI API key (if using OpenAI embeddings)"
+        )
+        
+        pinecone_secret = st.text_input(
+            "Pinecone API Key Secret Name",
+            value=product_to_edit.get('pinecone_api_key_secret', '') if edit_mode else "",
+            placeholder="e.g., PRODUCT_A_PINECONE_KEY",
+            help="Name of the Replit secret containing the Pinecone API key"
+        )
+        
+        st.markdown("### Default Processing Settings")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            chunking_strategy = st.selectbox(
+                "Default Chunking Strategy",
+                ["Token-based", "Sentence-based", "Semantic"],
+                index=["Token-based", "Sentence-based", "Semantic"].index(product_to_edit.get('default_chunking_strategy', 'Token-based')) if edit_mode else 0
+            )
+            
+            chunk_size = st.number_input(
+                "Default Chunk Size",
+                min_value=128,
+                max_value=2048,
+                value=product_to_edit.get('default_chunk_size', 512) if edit_mode else 512,
+                step=128
+            )
+        
+        with col2:
+            embedding_model = st.selectbox(
+                "Default Embedding Model",
+                ["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"],
+                index=["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"].index(product_to_edit.get('default_embedding_model', 'text-embedding-3-small')) if edit_mode and product_to_edit.get('default_embedding_model') in ["text-embedding-3-small", "text-embedding-3-large", "HuggingFace"] else 0
+            )
+        
+        col_save, col_cancel = st.columns(2)
+        
+        with col_save:
+            if st.button("💾 Save Product", type="primary", use_container_width=True):
+                try:
+                    if not product_name or not pinecone_index:
+                        st.error("Product name and Pinecone index are required")
+                    else:
+                        if edit_mode:
+                            update_product(
+                                st.session_state.edit_product_id,
+                                name=product_name,
+                                description=product_description,
+                                pinecone_index=pinecone_index,
+                                llamaparse_secret=llamaparse_secret,
+                                openai_secret=openai_secret,
+                                pinecone_secret=pinecone_secret,
+                                chunking_strategy=chunking_strategy,
+                                chunk_size=chunk_size,
+                                embedding_model=embedding_model
+                            )
+                        else:
+                            create_product(
+                                name=product_name,
+                                description=product_description,
+                                pinecone_index=pinecone_index,
+                                llamaparse_secret=llamaparse_secret,
+                                openai_secret=openai_secret,
+                                pinecone_secret=pinecone_secret,
+                                chunking_strategy=chunking_strategy,
+                                chunk_size=chunk_size,
+                                embedding_model=embedding_model
+                            )
+                        
+                        st.success(f"✅ {'Updated' if edit_mode else 'Created'} product: {product_name}")
+                        
+                        if 'edit_product_id' in st.session_state:
+                            del st.session_state.edit_product_id
+                        
+                        st.session_state.products = get_products()
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.error(f"Error saving product: {str(e)}")
+        
+        with col_cancel:
+            if st.button("Cancel", use_container_width=True):
+                if 'edit_product_id' in st.session_state:
+                    del st.session_state.edit_product_id
+                st.rerun()
+
+with tab3:
     st.header("Data Sources Management")
     st.markdown("Manage Google Sheet data sources for different paper topics")
     
@@ -238,6 +439,22 @@ with tab2:
                 st.error("Source not found")
                 del st.session_state.edit_source_id
                 edit_mode = False
+        
+        # Product selection
+        products = get_products(active_only=True)
+        if not products:
+            st.warning("⚠️ No active products found. Please create a product first in the Products tab.")
+            st.stop()
+        
+        selected_product_id = st.selectbox(
+            "Select Product",
+            options=[p['id'] for p in products],
+            format_func=lambda x: next((p['name'] for p in products if p['id'] == x), str(x)),
+            index=next((i for i, p in enumerate(products) if p['id'] == editing_source.get('product_id')), 0) if (edit_mode and editing_source) else 0,
+            help="Which product/startup this data source belongs to"
+        )
+        
+        st.markdown("---")
         
         col1, col2 = st.columns(2)
         
@@ -359,13 +576,15 @@ with tab2:
                                 sheet_url=source_url,
                                 sheet_tab=source_tab,
                                 topic=source_topic,
-                                default_namespace=source_namespace
+                                default_namespace=source_namespace,
+                                product_id=selected_product_id
                             )
                             source_id = st.session_state.edit_source_id
                         else:
                             source_id = create_data_source(
                                 source_name, source_url, source_tab,
-                                source_topic, source_namespace
+                                source_topic, source_namespace,
+                                product_id=selected_product_id
                             )
                         
                         for role, column in st.session_state.column_mappings_temp.items():
