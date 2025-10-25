@@ -28,7 +28,7 @@ def init_products_table():
                     pinecone_api_key_secret VARCHAR(255),
                     google_credentials_secret VARCHAR(255),
                     default_chunking_strategy VARCHAR(50) DEFAULT 'Token-based',
-                    default_chunk_size INTEGER DEFAULT 512,
+                    default_chunk_size INTEGER DEFAULT 1024,
                     default_embedding_model VARCHAR(100) DEFAULT 'text-embedding-3-small',
                     active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -36,10 +36,19 @@ def init_products_table():
                 )
             """)
             
-            # Add google_credentials_secret column if not exists
+            # Add all processing settings columns
             cur.execute("""
                 ALTER TABLE products 
-                ADD COLUMN IF NOT EXISTS google_credentials_secret VARCHAR(255)
+                ADD COLUMN IF NOT EXISTS google_credentials_secret VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS parsing_mode VARCHAR(50) DEFAULT 'auto',
+                ADD COLUMN IF NOT EXISTS result_type VARCHAR(50) DEFAULT 'markdown',
+                ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en',
+                ADD COLUMN IF NOT EXISTS use_vendor_multimodal BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS page_separator VARCHAR(50) DEFAULT '\n---\n',
+                ADD COLUMN IF NOT EXISTS chunk_overlap INTEGER DEFAULT 200,
+                ADD COLUMN IF NOT EXISTS semantic_buffer_size INTEGER DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS pinecone_environment VARCHAR(100) DEFAULT 'us-east-1',
+                ADD COLUMN IF NOT EXISTS default_namespace VARCHAR(255) DEFAULT 'default'
             """)
             
             # Add product_id to data_sources if not exists
@@ -754,10 +763,19 @@ def create_product(
     pinecone_secret: str = None,
     google_credentials_secret: str = None,
     chunking_strategy: str = 'Token-based',
-    chunk_size: int = 512,
-    embedding_model: str = 'text-embedding-3-small'
+    chunk_size: int = 1024,
+    chunk_overlap: int = 200,
+    embedding_model: str = 'text-embedding-3-small',
+    parsing_mode: str = 'auto',
+    result_type: str = 'markdown',
+    language: str = 'en',
+    use_vendor_multimodal: bool = True,
+    page_separator: str = '\n---\n',
+    semantic_buffer_size: int = 1,
+    pinecone_environment: str = 'us-east-1',
+    default_namespace: str = 'default'
 ) -> int:
-    """Create a new product."""
+    """Create a new product with full processing configuration."""
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -766,12 +784,16 @@ def create_product(
                 INSERT INTO products 
                 (name, description, pinecone_index, llamaparse_api_key_secret,
                  openai_api_key_secret, pinecone_api_key_secret, google_credentials_secret,
-                 default_chunking_strategy, default_chunk_size, default_embedding_model)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 default_chunking_strategy, default_chunk_size, chunk_overlap, default_embedding_model,
+                 parsing_mode, result_type, language, use_vendor_multimodal, page_separator,
+                 semantic_buffer_size, pinecone_environment, default_namespace)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (name, description, pinecone_index, llamaparse_secret, openai_secret,
-                 pinecone_secret, google_credentials_secret, chunking_strategy, chunk_size, embedding_model)
+                 pinecone_secret, google_credentials_secret, chunking_strategy, chunk_size, chunk_overlap,
+                 embedding_model, parsing_mode, result_type, language, use_vendor_multimodal,
+                 page_separator, semantic_buffer_size, pinecone_environment, default_namespace)
             )
             result = cur.fetchone()
             conn.commit()
@@ -790,7 +812,16 @@ def update_product(
     google_credentials_secret: str = None,
     chunking_strategy: str = None,
     chunk_size: int = None,
+    chunk_overlap: int = None,
     embedding_model: str = None,
+    parsing_mode: str = None,
+    result_type: str = None,
+    language: str = None,
+    use_vendor_multimodal: bool = None,
+    page_separator: str = None,
+    semantic_buffer_size: int = None,
+    pinecone_environment: str = None,
+    default_namespace: str = None,
     active: bool = None
 ):
     """Update a product."""
@@ -827,9 +858,36 @@ def update_product(
             if chunk_size is not None:
                 set_clauses.append("default_chunk_size = %s")
                 values.append(chunk_size)
+            if chunk_overlap is not None:
+                set_clauses.append("chunk_overlap = %s")
+                values.append(chunk_overlap)
             if embedding_model is not None:
                 set_clauses.append("default_embedding_model = %s")
                 values.append(embedding_model)
+            if parsing_mode is not None:
+                set_clauses.append("parsing_mode = %s")
+                values.append(parsing_mode)
+            if result_type is not None:
+                set_clauses.append("result_type = %s")
+                values.append(result_type)
+            if language is not None:
+                set_clauses.append("language = %s")
+                values.append(language)
+            if use_vendor_multimodal is not None:
+                set_clauses.append("use_vendor_multimodal = %s")
+                values.append(use_vendor_multimodal)
+            if page_separator is not None:
+                set_clauses.append("page_separator = %s")
+                values.append(page_separator)
+            if semantic_buffer_size is not None:
+                set_clauses.append("semantic_buffer_size = %s")
+                values.append(semantic_buffer_size)
+            if pinecone_environment is not None:
+                set_clauses.append("pinecone_environment = %s")
+                values.append(pinecone_environment)
+            if default_namespace is not None:
+                set_clauses.append("default_namespace = %s")
+                values.append(default_namespace)
             if active is not None:
                 set_clauses.append("active = %s")
                 values.append(active)
