@@ -642,9 +642,16 @@ elif selected_page == "📚 Data Sources":
         if source_url and st.button("🔍 Auto-Detect Columns"):
             with st.spinner("Loading sheet columns..."):
                 try:
-                    temp_data = load_sheet_data(source_url, source_tab, st.session_state.get('google_credentials'))
-                    st.session_state.detected_columns = list(temp_data.columns) if temp_data is not None else []
-                    st.success(f"Found {len(st.session_state.detected_columns)} columns")
+                    from utils.database import get_product_api_keys
+                    product_api_keys = get_product_api_keys(selected_product_id)
+                    google_creds = product_api_keys.get('GOOGLE_CREDENTIALS')
+                    
+                    if not google_creds:
+                        st.error("❌ No Google credentials configured for this product. Please add them in the Products tab.")
+                    else:
+                        temp_data = load_sheet_data(source_url, source_tab, google_creds)
+                        st.session_state.detected_columns = list(temp_data.columns) if temp_data is not None else []
+                        st.success(f"Found {len(st.session_state.detected_columns)} columns")
                 except Exception as e:
                     st.error(f"Error loading sheet: {str(e)}")
         
