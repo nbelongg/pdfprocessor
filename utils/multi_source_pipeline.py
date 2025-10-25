@@ -14,9 +14,10 @@ from utils.pinecone_uploader import initialize_pinecone, upload_to_pinecone
 from utils.database import (
     create_processing_job, update_job_status, 
     save_chunks, mark_chunks_uploaded, update_last_processed,
-    get_data_source, get_column_mapping_dict
+    get_data_source, get_column_mapping_dict, get_product, get_product_api_keys
 )
 from utils.deduplication import check_all_layers, record_or_update_paper
+import os
 
 
 def process_multi_source_pipeline(
@@ -77,6 +78,48 @@ def process_multi_source_pipeline(
             })
             continue
         
+        # Load product-specific configuration
+        product_config = config.copy()  # Start with base config
+        product_info = None
+        product_index = None
+        
+        if source_info.get('product_id'):
+            product_info = get_product(source_info['product_id'])
+            if product_info and product_info['active']:
+                # Get product-specific API keys from environment
+                product_api_keys = get_product_api_keys(source_info['product_id'])
+                
+                # Override API keys if product specifies them
+                if product_api_keys.get('LLAMA_CLOUD_API_KEY'):
+                    product_config['llama_api_key'] = product_api_keys['LLAMA_CLOUD_API_KEY']
+                if product_api_keys.get('OPENAI_API_KEY'):
+                    product_config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
+                if product_api_keys.get('PINECONE_API_KEY'):
+                    product_config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
+                
+                # Use product-specific Pinecone index
+                product_config['index_name'] = product_info['pinecone_index']
+                
+                # Use product-specific default settings if not overridden
+                if 'chunking_strategy' not in config or config['chunking_strategy'] == 'Token-based':
+                    product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
+                if 'chunk_size' not in config or config['chunk_size'] == 512:
+                    product_config['chunk_size'] = product_info.get('default_chunk_size', 512)
+                if 'embedding_model' not in config or config['embedding_model'] == 'text-embedding-3-small':
+                    product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
+                
+                # Initialize product-specific Pinecone index if not already done
+                if not preview_mode and product_index is None:
+                    product_index = initialize_pinecone(product_config)
+            else:
+                # Product not found or inactive, use global config
+                product_config = config
+                product_index = pinecone_index
+        else:
+            # No product assigned, use global config
+            product_config = config
+            product_index = pinecone_index
+        
         column_mappings = get_column_mapping_dict(source_id)
         drive_link_column = column_mappings.get('drive_link', 'Drive Link')
         default_namespace = source_info['default_namespace']
@@ -118,8 +161,8 @@ def process_multi_source_pipeline(
                 
                 dedup_result = None
                 if not preview_mode:
-                    enable_dedup_l1 = config.get('dedup_layer1', True)
-                    enable_dedup_l2 = config.get('dedup_layer2', True)
+                    enable_dedup_l1 = product_config.get('dedup_layer1', True)
+                    enable_dedup_l2 = product_config.get('dedup_layer2', True)
                     
                     dedup_result = check_all_layers(
                         drive_file_id=file_id,
@@ -175,7 +218,7 @@ def process_multi_source_pipeline(
                 parsed_text = parse_pdf_with_llamaparse(
                     pdf_content,
                     file_metadata.get('name', f'file_{file_id}.pdf'),
-                    config
+                    product_config
                 )
                 
                 row_metadata = {
@@ -199,7 +242,7 @@ def process_multi_source_pipeline(
                         f"Chunking text..."
                     )
                 
-                nodes = chunk_text(parsed_text, config, row_metadata)
+                nodes = chunk_text(parsed_text, product_config, row_metadata)
                 
                 if progress_callback:
                     progress_callback(
@@ -207,7 +250,7 @@ def process_multi_source_pipeline(
                         f"Creating embeddings ({len(nodes)} chunks)..."
                     )
                 
-                embeddings = create_embeddings(nodes, config)
+                embeddings = create_embeddings(nodes, product_config)
                 
                 namespace = default_namespace
                 namespace_col = column_mappings.get('namespace')
@@ -238,7 +281,7 @@ def process_multi_source_pipeline(
                         )
                     
                     uploaded_count = upload_to_pinecone(
-                        pinecone_index,
+                        product_index,
                         embeddings,
                         nodes,
                         metadata_list,
