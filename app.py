@@ -8,6 +8,10 @@ import json
 
 load_dotenv()
 
+os.environ['HF_HOME'] = '/tmp/.huggingface'
+os.environ['TRANSFORMERS_CACHE'] = '/tmp/.huggingface/transformers'
+os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/tmp/.huggingface/sentence-transformers'
+
 st.set_page_config(
     page_title="PDF Chunking & Embedding Pipeline",
     page_icon="📄",

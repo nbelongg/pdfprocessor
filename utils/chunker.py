@@ -5,7 +5,6 @@ from llama_index.core.node_parser import (
 )
 from llama_index.core import Document
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from typing import List, Dict
 from llama_index.core.schema import TextNode, BaseNode
 
@@ -70,6 +69,7 @@ def get_embed_model(config: Dict):
             model=model_name
         )
     elif 'HuggingFace' in embedding_model:
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
         model_name = embedding_model.split('(')[0].strip()
         return HuggingFaceEmbedding(
             model_name=model_name

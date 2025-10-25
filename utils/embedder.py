@@ -1,5 +1,4 @@
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.schema import TextNode
 from typing import List, Dict
 import numpy as np
@@ -29,6 +28,7 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
             model=model_name
         )
     elif 'HuggingFace' in embedding_model:
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
         model_name = embedding_model.split('(')[0].strip()
         embed_model = HuggingFaceEmbedding(
             model_name=model_name
