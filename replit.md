@@ -86,7 +86,7 @@ Each product in the database stores:
 - **Complete Processing Settings** (all settings are product-specific):
   - **Parsing Settings**: Mode (auto/fast/premium), result type (markdown/text), language, multimodal support, page separator
   - **Chunking Settings**: Strategy (token/sentence/semantic), chunk size, chunk overlap, semantic buffer size
-  - **Embedding Settings**: Model (OpenAI text-embedding-3-small/large)
+  - **Embedding Settings**: Model (OpenAI text-embedding-3-small/large), custom dimension (optional, defaults to model maximum)
 - **Status**: Active/inactive flag
 
 ### Secret Management
@@ -114,7 +114,7 @@ When processing PDFs:
    - **Pinecone configuration**: Index name, environment, default namespace
    - **All parsing settings**: Mode, result type, language, multimodal, page separator
    - **All chunking settings**: Strategy, size, overlap, semantic buffer
-   - **Embedding model**: OpenAI model selection
+   - **Embedding settings**: OpenAI model selection (text-embedding-3-small/large), optional custom dimensions
 3. Product settings take precedence over any global/base configuration
 4. Pipeline functions (PDF download, parsing, chunking, embedding) all use product-specific config
 5. Vectors stored in product-specific Pinecone index with product settings

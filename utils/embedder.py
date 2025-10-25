@@ -22,8 +22,16 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
     embedding_model = config.get('embedding_model', '')
     embedding_dimension = config.get('embedding_dimension')
     
-    if 'OpenAI' in embedding_model:
-        model_name = embedding_model.split('(')[0].strip()
+    # Check if it's an OpenAI model (starts with 'text-embedding-' or contains 'OpenAI')
+    if embedding_model.startswith('text-embedding-') or 'OpenAI' in embedding_model:
+        # For legacy format like "OpenAI (text-embedding-3-small)", extract model name from inside parentheses
+        if 'OpenAI' in embedding_model and '(' in embedding_model and ')' in embedding_model:
+            # Extract text between parentheses: "OpenAI (text-embedding-3-small)" -> "text-embedding-3-small"
+            model_name = embedding_model.split('(')[1].split(')')[0].strip()
+        else:
+            # Direct model name like "text-embedding-3-small"
+            model_name = embedding_model
+        
         embed_kwargs = {
             'api_key': config.get('openai_api_key'),
             'model': model_name
@@ -38,6 +46,7 @@ def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
             model_name=model_name
         )
     else:
+        # Default fallback to text-embedding-3-small
         embed_kwargs = {
             'api_key': config.get('openai_api_key'),
             'model': 'text-embedding-3-small'
