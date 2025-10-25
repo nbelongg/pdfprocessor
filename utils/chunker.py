@@ -7,9 +7,9 @@ from llama_index.core import Document
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from typing import List, Dict
-from llama_index.core.schema import TextNode
+from llama_index.core.schema import TextNode, BaseNode
 
-def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[TextNode]:
+def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]:
     """
     Chunk text using specified strategy.
     
@@ -19,11 +19,14 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[TextNode]
         metadata: Metadata to attach to chunks
         
     Returns:
-        List of TextNode objects
+        List of BaseNode objects
     """
     strategy = config.get('chunking_strategy', 'Token-based')
     
-    doc = Document(text=text, metadata=metadata or {})
+    if metadata is None:
+        metadata = {}
+    
+    doc = Document(text=text, metadata=metadata)
     
     if strategy == "Token-based":
         splitter = TokenTextSplitter(

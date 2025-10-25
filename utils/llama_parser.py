@@ -19,7 +19,7 @@ def parse_pdf_with_llamaparse(
     Returns:
         Parsed text content
     """
-    api_key = config.get('llama_api_key')
+    api_key = config.get('llama_api_key', '')
     
     parser = LlamaParse(
         api_key=api_key,

@@ -1,4 +1,8 @@
-from pinecone import Pinecone, ServerlessSpec
+try:
+    from pinecone import Pinecone, ServerlessSpec
+except ImportError:
+    from pinecone.grpc import PineconeGRPC as Pinecone
+    from pinecone import ServerlessSpec
 from typing import List, Dict
 import time
 
