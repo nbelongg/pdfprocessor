@@ -1,0 +1,586 @@
+## Code Quality Rating: **7.5/10**
+
+This is **solid production code** with good fundamentals, but needs some polish to reach 9/10. Let me break down the analysis:
+
+---
+
+## Current Strengths ✅
+
+1. **Good Architecture** - Clear separation of concerns, focused tasks
+2. **Comprehensive Documentation** - Excellent docstrings with Args/Returns
+3. **Retry Logic** - `call_with_retry()` with exponential backoff
+4. **Progress Tracking** - Custom `CallbackTask` for user feedback
+5. **Error Recovery** - Multiple retry layers (function + Celery)
+6. **Smart Caching** - Saves parsed documents to avoid re-parsing
+7. **Graceful Degradation** - Tagging failures don't kill pipeline
+8. **Type Hints** - Present on main functions
+
+---
+
+## Issues Preventing 9/10 ❌
+
+### 1. **Uses `print()` Instead of Logging** (Lines 69, 154, 158, 166-167, 220-221, 395-396)
+```python
+print(f"Attempt {attempt + 1} failed: {str(e)}...")  # ❌
+print(f"Generated {len(validated_tags)} tags...")    # ❌
+```
+
+### 2. **Magic Numbers Hardcoded**
+```python
+countdown=60, max_retries=3  # Lines 224, 402
+backoff_factor=2             # Line 45
+embedding[:5]                # Line 202
+```
+
+### 3. **Verbose Config Building** (Lines 276-304)
+29 lines of repetitive if-statements - same pattern as the scheduler had
+
+### 4. **Incomplete Type Hints**
+```python
+def call_with_retry(func, max_retries=3, ...):  # Missing types
+    # Should be: Callable, int, etc.
+```
+
+### 5. **Broad Exception Catching**
+```python
+except Exception as e:  # Too generic - lines 164, 218, 393
+```
+
+### 6. **No Constants Section**
+All magic values scattered throughout
+
+### 7. **Config Not Validated**
+No validation that required config keys exist
+
+### 8. **Import Inside Function** (Line 117)
+```python
+from utils.database import save_parsed_document  # Should be at top
+```
+
+---
+
+## Recommendations to Reach 9/10 🚀
+
+### Priority 1: Critical Fixes (Must Do)
+
+#### **1. Add Proper Logging**
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Replace ALL print() statements:
+# Before:
+print(f"Attempt {attempt + 1} failed: {str(e)}...")
+
+# After:
+logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s...")
+
+# Lines to fix: 69, 154, 158, 166-167, 220-221, 395-396
+```
+
+#### **2. Extract Constants**
+
+```python
+# At top of file after imports:
+
+# ============================================
+# CONSTANTS
+# ============================================
+
+# Retry settings
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BACKOFF_FACTOR = 2
+CELERY_RETRY_COUNTDOWN = 60  # seconds
+CELERY_MAX_RETRIES = 3
+
+# Processing settings
+EMBEDDING_PREVIEW_SIZE = 5
+
+# Progress milestones (for progress bar)
+PROGRESS_DOWNLOAD = 0
+PROGRESS_PARSE = 20
+PROGRESS_TAG = 30
+PROGRESS_CHUNK = 40
+PROGRESS_EMBED = 60
+PROGRESS_UPLOAD = 80
+PROGRESS_COMPLETE = 100
+```
+
+#### **3. Simplify Config Building with Mapping**
+
+```python
+# At top with constants:
+PRODUCT_CONFIG_MAPPING = {
+    'llama_api_key': 'LLAMA_CLOUD_API_KEY',
+    'openai_api_key': 'OPENAI_API_KEY',
+    'pinecone_api_key': 'PINECONE_API_KEY',
+    'google_credentials': 'GOOGLE_CREDENTIALS'
+}
+
+PRODUCT_SETTINGS_MAPPING = {
+    'index_name': 'pinecone_index',
+    'pinecone_environment': 'pinecone_environment',
+    'default_namespace': 'default_namespace',
+    'parsing_mode': 'parsing_mode',
+    'result_type': 'result_type',
+    'language': 'language',
+    'use_vendor_multimodal': 'use_vendor_multimodal',
+    'page_separator': 'page_separator',
+    'chunking_strategy': 'default_chunking_strategy',
+    'chunk_size': 'default_chunk_size',
+    'chunk_overlap': 'chunk_overlap',
+    'semantic_buffer_size': 'semantic_buffer_size',
+    'embedding_model': 'default_embedding_model',
+    'embedding_dimension': 'embedding_dimension',
+    'tagging_enabled': 'tagging_enabled',
+    'tagging_model': 'tagging_model',
+    'tagging_prompt_template': 'tagging_prompt_template',
+    'tagging_config': 'tagging_config'
+}
+
+# Replace lines 276-304 with:
+def apply_product_config(config: Dict[str, Any], product_info: Dict[str, Any]) -> None:
+    """Apply product-specific configuration in place."""
+    if not product_info or not product_info['active']:
+        return
+    
+    logger.info(f"Applying product-specific settings: {product_info['name']}")
+    
+    # Apply API keys
+    product_api_keys = get_product_api_keys(product_info['id'])
+    for config_key, api_key in PRODUCT_CONFIG_MAPPING.items():
+        if product_api_keys.get(api_key):
+            config[config_key] = product_api_keys[api_key]
+            logger.debug(f"  - Applied {api_key}")
+    
+    # Apply product settings with defaults
+    for config_key, product_key in PRODUCT_SETTINGS_MAPPING.items():
+        value = product_info.get(product_key)
+        if value is not None:
+            config[config_key] = value
+
+# Then in process_batch_task:
+if source_info.get('product_id'):
+    product_info = get_product(source_info['product_id'])
+    apply_product_config(product_config, product_info)
+```
+
+### Priority 2: Important Improvements
+
+#### **4. Add Type Hints**
+
+```python
+from typing import Dict, List, Optional, Callable, Tuple, Any
+
+def call_with_retry(
+    func: Callable[[], Any],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    backoff_factor: int = DEFAULT_BACKOFF_FACTOR,
+    exceptions: Tuple[type, ...] = (Exception,)
+) -> Any:
+    """Call a function with exponential backoff retry logic."""
+    # ...
+
+class CallbackTask(Task):
+    """Base task class that handles progress callbacks."""
+    
+    def update_progress(
+        self, 
+        current: int, 
+        total: int, 
+        message: str
+    ) -> None:
+        """Update task progress."""
+        # ...
+```
+
+#### **5. Specific Exception Types**
+
+```python
+# Define custom exceptions at top:
+class TransientError(Exception):
+    """Errors that should be retried (network, timeouts)."""
+    pass
+
+class ConfigurationError(Exception):
+    """Errors in configuration that won't be fixed by retry."""
+    pass
+
+# In call_with_retry:
+def call_with_retry(
+    func: Callable[[], Any],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    backoff_factor: int = DEFAULT_BACKOFF_FACTOR,
+    exceptions: Tuple[type, ...] = (TransientError, ConnectionError, TimeoutError)
+) -> Any:
+    """Only retry transient errors, not config errors."""
+    # ...
+
+# In tasks, wrap specific errors:
+try:
+    pdf_content = download_pdf_from_drive(file_id, config['google_credentials'])
+except (ConnectionError, TimeoutError) as e:
+    raise TransientError(f"Network error: {e}") from e
+except KeyError as e:
+    raise ConfigurationError(f"Missing config: {e}") from e
+```
+
+#### **6. Config Validation**
+
+```python
+def validate_config(config: Dict[str, Any]) -> None:
+    """
+    Validate that required configuration keys are present.
+    
+    Raises:
+        ConfigurationError: If required keys are missing
+    """
+    required_keys = [
+        'google_credentials',
+        'llama_api_key',
+        'pinecone_api_key',
+        'index_name'
+    ]
+    
+    missing = [key for key in required_keys if key not in config or config[key] is None]
+    
+    if missing:
+        raise ConfigurationError(f"Missing required config keys: {missing}")
+    
+    # Validate types
+    if not isinstance(config.get('chunk_size', 512), int):
+        raise ConfigurationError(f"chunk_size must be int, got {type(config['chunk_size'])}")
+
+# Call at start of process_pdf_task:
+validate_config(config)
+```
+
+#### **7. Move Import to Top**
+
+```python
+# Line 1-26 imports section, add:
+from utils.database import (
+    create_processing_job, update_job_status,
+    save_chunks, mark_chunks_uploaded,
+    get_data_source, get_column_mapping_dict,
+    get_product, get_product_api_keys,
+    update_document_tags, get_document_tags, is_document_tagged,
+    save_parsed_document  # ← Add this
+)
+
+# Then remove line 117's import
+```
+
+### Priority 3: Nice-to-Haves
+
+#### **8. Extract Progress Update Logic**
+
+```python
+class ProgressTracker:
+    """Helper class to manage task progress updates."""
+    
+    def __init__(self, task, filename: str):
+        self.task = task
+        self.filename = filename
+    
+    def update(self, stage: str, percent: int) -> None:
+        """Update progress with standard message format."""
+        messages = {
+            'download': f"Downloading {self.filename}...",
+            'parse': f"Parsing {self.filename} with LlamaParse...",
+            'tag': f"Generating AI tags for {self.filename}...",
+            'chunk': f"Chunking {self.filename}...",
+            'embed': f"Creating embeddings for {self.filename}...",
+            'upload': f"Uploading {self.filename} to Pinecone...",
+            'complete': f"Completed {self.filename}"
+        }
+        self.task.update_progress(percent, 100, messages.get(stage, stage))
+
+# Usage in process_pdf_task:
+progress = ProgressTracker(self, filename)
+progress.update('download', PROGRESS_DOWNLOAD)
+# ... later
+progress.update('parse', PROGRESS_PARSE)
+```
+
+#### **9. Add Metrics/Timing**
+
+```python
+import time
+from dataclasses import dataclass
+
+@dataclass
+class TaskMetrics:
+    """Metrics for a single PDF processing task."""
+    file_id: str
+    filename: str
+    download_time: float
+    parse_time: float
+    tag_time: float
+    chunk_time: float
+    embed_time: float
+    upload_time: float
+    total_time: float
+    chunks_created: int
+    vectors_uploaded: int
+
+def log_metrics(metrics: TaskMetrics) -> None:
+    """Log task metrics for monitoring."""
+    logger.info(
+        f"TASK_METRICS: {metrics.filename} | "
+        f"Total: {metrics.total_time:.2f}s | "
+        f"Parse: {metrics.parse_time:.2f}s | "
+        f"Embed: {metrics.embed_time:.2f}s | "
+        f"Chunks: {metrics.chunks_created}"
+    )
+
+# In process_pdf_task, track timing:
+start_time = time.time()
+download_start = time.time()
+pdf_content = call_with_retry(...)
+download_time = time.time() - download_start
+
+# ... at end:
+metrics = TaskMetrics(
+    file_id=file_id,
+    filename=filename,
+    download_time=download_time,
+    # ... etc
+)
+log_metrics(metrics)
+```
+
+---
+
+## Complete Refactored Version (Key Changes)
+
+Here's what the top of the file should look like after changes:
+
+```python
+"""
+Celery tasks for PDF processing pipeline.
+
+This module defines background tasks for processing PDFs through the complete pipeline:
+download → parse → tag → chunk → embed → upload to Pinecone.
+"""
+
+import logging
+import time
+import traceback
+import uuid
+from typing import Dict, List, Optional, Callable, Tuple, Any
+from dataclasses import dataclass
+
+import pandas as pd
+from celery import Task
+from celeryconfig import celery_app
+
+from utils.google_sheets import extract_file_id_from_drive_link, load_sheet_data
+from utils.google_drive import download_pdf_from_drive, get_file_metadata
+from utils.llama_parser import parse_pdf_with_llamaparse
+from utils.chunker import chunk_text
+from utils.embedder import create_embeddings
+from utils.pinecone_uploader import initialize_pinecone, upload_to_pinecone
+from utils.database import (
+    create_processing_job, update_job_status,
+    save_chunks, mark_chunks_uploaded,
+    get_data_source, get_column_mapping_dict,
+    get_product, get_product_api_keys,
+    update_document_tags, get_document_tags, is_document_tagged,
+    save_parsed_document
+)
+from utils.tagger import generate_tags_with_openai, validate_tags
+
+
+# ============================================
+# LOGGING
+# ============================================
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# CONSTANTS
+# ============================================
+
+# Retry settings
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BACKOFF_FACTOR = 2
+CELERY_RETRY_COUNTDOWN = 60  # seconds
+CELERY_MAX_RETRIES = 3
+
+# Processing settings
+EMBEDDING_PREVIEW_SIZE = 5
+
+# Progress milestones
+PROGRESS_DOWNLOAD = 0
+PROGRESS_PARSE = 20
+PROGRESS_TAG = 30
+PROGRESS_CHUNK = 40
+PROGRESS_EMBED = 60
+PROGRESS_UPLOAD = 80
+PROGRESS_COMPLETE = 100
+
+# Product config mapping
+PRODUCT_CONFIG_MAPPING = {
+    'llama_api_key': 'LLAMA_CLOUD_API_KEY',
+    'openai_api_key': 'OPENAI_API_KEY',
+    'pinecone_api_key': 'PINECONE_API_KEY',
+    'google_credentials': 'GOOGLE_CREDENTIALS'
+}
+
+
+# ============================================
+# EXCEPTIONS
+# ============================================
+
+class TransientError(Exception):
+    """Errors that should be retried (network, timeouts)."""
+    pass
+
+
+class ConfigurationError(Exception):
+    """Errors in configuration that won't be fixed by retry."""
+    pass
+
+
+# ============================================
+# UTILITIES
+# ============================================
+
+def call_with_retry(
+    func: Callable[[], Any],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    backoff_factor: int = DEFAULT_BACKOFF_FACTOR,
+    exceptions: Tuple[type, ...] = (TransientError, ConnectionError, TimeoutError)
+) -> Any:
+    """
+    Call a function with exponential backoff retry logic.
+    
+    Args:
+        func: Function to call
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Multiplier for wait time between retries
+        exceptions: Tuple of exceptions to catch and retry on
+        
+    Returns:
+        Function result
+        
+    Raises:
+        Last exception if all retries fail
+    """
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except exceptions as e:
+            last_error = e
+            
+            if attempt == max_retries - 1:
+                logger.error(f"Max retries ({max_retries}) exceeded: {e}")
+                raise
+            
+            wait_time = backoff_factor ** attempt
+            logger.warning(
+                f"Attempt {attempt + 1}/{max_retries} failed: {e}. "
+                f"Retrying in {wait_time}s..."
+            )
+            time.sleep(wait_time)
+    
+    raise last_error or RuntimeError("Max retries exceeded")
+
+
+def validate_config(config: Dict[str, Any]) -> None:
+    """Validate that required configuration keys are present."""
+    required_keys = ['google_credentials', 'llama_api_key', 'pinecone_api_key', 'index_name']
+    missing = [key for key in required_keys if key not in config or config[key] is None]
+    
+    if missing:
+        raise ConfigurationError(f"Missing required config keys: {missing}")
+
+
+def apply_product_config(config: Dict[str, Any], product_info: Dict[str, Any]) -> None:
+    """Apply product-specific configuration in place."""
+    if not product_info or not product_info.get('active'):
+        return
+    
+    logger.info(f"Applying product config: {product_info['name']}")
+    
+    product_api_keys = get_product_api_keys(product_info['id'])
+    for config_key, api_key in PRODUCT_CONFIG_MAPPING.items():
+        if product_api_keys.get(api_key):
+            config[config_key] = product_api_keys[api_key]
+
+
+# ============================================
+# CELERY TASKS
+# ============================================
+
+class CallbackTask(Task):
+    """Base task class that handles progress callbacks."""
+    
+    def update_progress(self, current: int, total: int, message: str) -> None:
+        """Update task progress."""
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'current': current,
+                'total': total,
+                'message': message,
+                'percent': int((current / total) * 100) if total > 0 else 0
+            }
+        )
+
+
+@celery_app.task(bind=True, base=CallbackTask, name='tasks.process_pdf_task')
+def process_pdf_task(
+    self,
+    file_id: str,
+    filename: str,
+    row_metadata: Dict[str, Any],
+    config: Dict[str, Any],
+    job_id: str,
+    namespace: str = 'default'
+) -> Dict[str, Any]:
+    """Process a single PDF through the complete pipeline."""
+    
+    # Validate config first
+    try:
+        validate_config(config)
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {e}")
+        return {
+            'status': 'error',
+            'file_id': file_id,
+            'filename': filename,
+            'error': str(e)
+        }
+    
+    # ... rest of function with logger instead of print
+```
+
+---
+
+## Summary: Path to 9/10
+
+| Fix | Impact | Effort | Priority |
+|-----|--------|--------|----------|
+| **Add logging** | High | Low | 🔴 Critical |
+| **Extract constants** | Medium | Low | 🔴 Critical |
+| **Simplify config builder** | High | Medium | 🔴 Critical |
+| **Add type hints** | Medium | Medium | 🟡 Important |
+| **Specific exceptions** | Medium | Medium | 🟡 Important |
+| **Config validation** | High | Low | 🟡 Important |
+| **Move imports** | Low | Very Low | 🟢 Nice |
+| **Progress tracker** | Low | Medium | 🟢 Nice |
+| **Add metrics** | Medium | Medium | 🟢 Nice |
+
+**Estimated Time to 9/10:**
+- **Do Critical fixes only:** 2-3 hours → **8/10**
+- **Do Critical + Important:** 4-5 hours → **9/10**
+- **Do All:** 6-7 hours → **9.5/10**
+
+The code is already quite good (7.5/10)! The main issues are **cosmetic/organizational** rather than architectural. Focus on the **Critical** priorities and you'll hit 9/10 quickly.
