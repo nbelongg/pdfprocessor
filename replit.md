@@ -1,200 +1,89 @@
 # PDF Chunking & Embedding Pipeline
 
 ## Overview
-This project is a Streamlit-based web application designed to process PDF documents from Google Drive. It provides a comprehensive data pipeline for parsing PDFs using LlamaParse, chunking the extracted text with various strategies, generating embeddings using multiple model options (OpenAI, HuggingFace), and storing these vectors in Pinecone for semantic search and retrieval. The system supports batch processing, metadata enrichment from Google Sheets, and includes features for deduplication, scheduled processing, and multi-product/multi-startup support. Its purpose is to efficiently manage and make searchable collections of documents like research papers or business reports.
+This project is a Streamlit-based web application for processing PDF documents from Google Drive. It provides a data pipeline for parsing PDFs using LlamaParse, chunking extracted text, generating embeddings with OpenAI models, and storing vectors in Pinecone for semantic search. The system supports batch processing, metadata enrichment from Google Sheets, deduplication, scheduled processing, and multi-product/multi-startup support, aiming to efficiently manage and make searchable document collections.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Code Architecture (Refactored October 2025)
-The application has been refactored from a monolithic 1,665-line app.py to a clean modular architecture:
-
-- **app.py** (152 lines): Main router that handles authentication, sidebar navigation, and page routing
-- **config/constants.py**: Centralized configuration including page definitions, default values, UI messages, and help text
-- **components/common.py**: Reusable UI components (page headers, refresh buttons, status messages)
-- **page_modules/** (formerly `pages/`): Modular page implementations
-  - `home.py`: Configuration page
-  - `products.py`: Product management with full CRUD operations
-  - `data_sources.py`: Data source management (stub, to be fully extracted)
-  - `select_files.py`, `preview.py`, `process.py`: PDF processing workflow (stubs)
-  - `job_queue.py`: Job queue monitoring (stub)
-  - `status.py`: Processing status display
-  - `history.py`: Processing history with detailed job views
-  - `search.py`: Vector search testing interface
-- **utils/**: Backend utilities for database, embeddings, parsing, etc. (unchanged)
-
-**Key Benefits:**
-- 91% reduction in main app.py file size (1,665 → 152 lines)
-- Clear separation of concerns with single-responsibility modules
-- Easier maintenance and testing
-- Security improvement: removed hardcoded password display from UI
-- Fixed Streamlit auto-discovery conflict by using `page_modules/` instead of `pages/`
-
 ### Application Framework
-- **Frontend**: Streamlit for interactive user interface.
+- **Frontend**: Streamlit for the user interface.
 - **Authentication**: Password-based via environment variables.
 - **State Management**: Streamlit session state.
-- **Background Processing**: Celery with Redis message broker for scalable, fault-tolerant job queue system.
+- **Background Processing**: Celery with Redis as the message broker for scalable job queuing.
+
+### Code Architecture
+The application features a modular architecture:
+- **`app.py`**: Main router for authentication, navigation, and page routing.
+- **`config/constants.py`**: Centralized configuration, UI messages, and help text.
+- **`components/common.py`**: Reusable UI components.
+- **`page_modules/`**: Modular page implementations for configuration, product management, data sources, PDF processing workflow, job monitoring, status display, history, and search.
+- **`utils/`**: Backend utilities for database, embeddings, parsing, etc.
 
 ### PDF Processing Pipeline
-1.  **Input Layer**: Google Sheets integration for batch configuration and metadata.
+1.  **Input Layer**: Google Sheets for batch configuration and metadata.
 2.  **PDF Acquisition**: Google Drive API for downloading PDFs.
-3.  **Parsing Layer**: LlamaParse for converting PDFs to structured text (markdown/text), with configurable modes and custom instructions. Raw parsed output stored as JSON in PostgreSQL.
-4.  **AI Tagging Layer** (Optional): OpenAI-powered automatic tag generation from parsed content, with product-specific models (gpt-4o, gpt-4o-mini) and customizable prompts. Tags stored in database and propagated to all chunks.
-5.  **Chunking Layer**: Multiple strategies including token-based (`TokenTextSplitter`), sentence-based (`SentenceSplitter`), and semantic (`SemanticSplitterNodeParser`). Tags from tagging layer included in chunk metadata.
-6.  **Embedding Layer**: OpenAI embeddings only (text-embedding-3-small, text-embedding-3-large). HuggingFace removed for deployment optimization.
-7.  **Storage Layer**: Pinecone vector database (serverless, AWS us-east-1, cosine similarity) for vector storage, with namespace support and batch upsert. Tags included in vector metadata.
+3.  **Parsing Layer**: LlamaParse for structured text extraction (markdown/text), with raw output stored as JSON in PostgreSQL.
+4.  **AI Tagging Layer** (Optional): OpenAI-powered automatic tag generation with product-specific models and customizable prompts. Tags stored in the database and propagated to chunks.
+5.  **Chunking Layer**: Multiple strategies (token-based, sentence-based, semantic) with tag inclusion in metadata.
+6.  **Embedding Layer**: OpenAI embeddings (text-embedding-3-small, text-embedding-3-large).
+7.  **Storage Layer**: Pinecone vector database (serverless) for vector storage, supporting namespaces and batch upsert, with tags included in vector metadata.
 
 ### Background Job Queue System (Celery)
--   **Message Broker**: Redis (Upstash serverless recommended) for task queue and result backend.
--   **Workers**: Celery workers running concurrently (default: 3 workers) to process PDF batches.
--   **Task Retry Logic**: Exponential backoff with max 3 retries for fault tolerance.
--   **Job Tracking**: PostgreSQL tables (`celery_jobs`) for job status, progress, and results.
--   **Monitoring**: Real-time job queue UI with active jobs, progress tracking, and history.
--   **Scalability**: Handle 100-200+ papers without browser timeouts or blocking the UI.
+-   **Message Broker**: Redis (Upstash) for task queue and result backend.
+-   **Workers**: Concurrent Celery workers with exponential backoff retry logic.
+-   **Job Tracking**: PostgreSQL tables (`celery_jobs`) for status, progress, and results.
+-   **Monitoring**: Real-time job queue UI.
 
 ### Configuration & Data Flow
--   Environment variables for API keys and service account JSON for Google Cloud.
+-   Environment variables for API keys and Google Cloud service account JSON.
 -   Data flow: `Google Sheets → Drive Links → PDF Download → LlamaParse → Parsed JSON (stored) → AI Tagging (optional) → Chunking (with tags) → Nodes → Embeddings → Pinecone (with tags in metadata)`
 
 ### Key Features
--   **Multi-Source Data Management**: Process PDFs from multiple Google Sheet sources, each with unique column mappings and metadata configurations.
--   **Deduplication System**: Three-layer deduplication (Drive file ID, content hash, optional embedding similarity) to prevent reprocessing and duplicate vectors.
--   **Scheduled/Periodic Processing**: Automatic processing of new papers from data sources via scheduled jobs (cron-based, configurable per source).
--   **Processing History & Tracking**: Persistence of all processing jobs, statuses, and metrics in a PostgreSQL database.
--   **Preview Mode**: Allows users to preview parsed and chunked PDFs before uploading to Pinecone.
--   **Vector Search Testing**: In-app tool to query the Pinecone index and test semantic search.
--   **Metadata Transformation Rules**: Reusable rules for transforming metadata (map values, combine columns, extract patterns, conditional transforms).
--   **Multi-Product/Multi-Startup Support**: Management of multiple products/startups with separate Pinecone indexes, API keys (via Replit secrets), and processing settings.
--   **Parsed Content Persistence**: Raw parsed content from LlamaParse is automatically saved to PostgreSQL as JSON, enabling future re-chunking and re-embedding without paying for expensive re-parsing.
--   **AI-Powered Tagging**: Automatic tag generation using OpenAI LLMs (gpt-4o, gpt-4o-mini, gpt-3.5-turbo) from parsed document content. Product-specific customizable prompt templates with variable substitution ({text}, {filename}, metadata fields). Tags stored in parsed_documents table and propagated to all chunks and vectors for improved searchability.
+-   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources with unique configurations.
+-   **Deduplication System**: Three-layer deduplication (Drive file ID, content hash, optional embedding similarity).
+-   **Scheduled/Periodic Processing**: Automatic processing of new documents via configurable scheduled jobs.
+-   **Processing History & Tracking**: Persistence of job details in PostgreSQL.
+-   **Preview Mode**: Preview parsed and chunked PDFs before Pinecone upload.
+-   **Vector Search Testing**: In-app tool for querying the Pinecone index.
+-   **Metadata Transformation Rules**: Reusable rules for metadata manipulation.
+-   **Multi-Product/Multi-Startup Support**: Management of multiple products with isolated Pinecone indexes, API keys, and processing settings.
+-   **Parsed Content Persistence**: Raw LlamaParse output stored in PostgreSQL as JSON for re-chunking/re-embedding without re-parsing.
 
 ### UI/UX Decisions
--   **Navigation**: Left sidebar with radio buttons for page selection (Configuration, Products, Data Sources, Select Files, Preview Chunks, Process & Upload, Status, History, Search Test)
--   **Processing Settings**: All processing settings moved to product-specific configuration (no global Processing Settings page)
--   **Products Tab**: Organized into collapsible sections (Parsing, Chunking, Embedding, Pinecone Settings) for better UX when creating/editing products
+-   **Navigation**: Left sidebar with radio buttons for page selection.
+-   **Processing Settings**: Moved to product-specific configuration.
+-   **Products Tab**: Collapsible sections for organized product creation/editing.
 
-## Database Error Handling & Best Practices
+### Database Write Operations Pattern
+-   All database write operations utilize a standardized pattern with `get_db_transaction` and `with_db_error_handling` for automatic transaction management and consistent error handling (permanent `DatabaseError` or transient `DatabaseTransientError`).
 
-### Database Write Operations Pattern (October 2025)
-**All database write operations** use the standardized error handling pattern:
-
-```python
-from utils.db_utils import get_db_transaction, with_db_error_handling
-
-@with_db_error_handling
-def your_write_function(param1, param2):
-    """Your function description."""
-    with get_db_transaction() as conn:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO ...", (...))
-            # No manual commit/rollback needed - automatic!
-```
-
-**Key Benefits:**
-- **Automatic transaction management**: Commits on success, rollbacks on errors
-- **Consistent error handling**: All database errors wrapped in `DatabaseError` or `DatabaseTransientError`
-- **60% code reduction**: Eliminates manual commit/rollback/close boilerplate
-- **Type safety**: Proper error categorization for retry logic
-
-**Migration Status (October 2025):**
-- ✅ ALL write operations migrated (7 functions)
-- ✅ Zero manual commits remaining (`conn.commit()` eliminated)
-- ✅ Integration tests passing (3/3)
-- ⚠️ 19 read-only functions still use old pattern (safe, no data modification)
-
-### Error Types
-- **`DatabaseError`**: Permanent errors (unique constraint violations, invalid data)
-- **`DatabaseTransientError`**: Temporary errors (connection issues, timeouts) - triggers Celery retry
+### Product Management & Multi-Tenant Support
+-   **Isolation**: Complete isolation for multiple products/startups via separate Pinecone indexes, API keys, and Google service account credentials.
+-   **Configuration**: Each product stores its name, description, Pinecone configuration, API key secret names (referencing Replit secrets), and complete processing settings (parsing, tagging, chunking, embedding).
+-   **Secret Management**: Uses a secret reference system where products store secret names (e.g., `llamaparse_api_key_secret = "STARTUP_A_LLAMAPARSE_KEY"`) instead of actual credentials, which are retrieved from Replit secrets.
+-   **Integration**: When processing, the pipeline loads complete product-specific configurations including API keys, Google Drive credentials, Pinecone settings, and all processing parameters.
 
 ## External Dependencies
 
 ### Third-Party APIs & Services
-1.  **LlamaParse**: High-quality PDF parsing.
-2.  **Pinecone**: Vector database for embedding storage and similarity search.
-3.  **OpenAI**: Embedding generation (optional).
+1.  **LlamaParse**: PDF parsing.
+2.  **Pinecone**: Vector database.
+3.  **OpenAI**: Embedding generation and AI Tagging.
 4.  **Google Cloud Platform**:
     -   **Google Drive API**: PDF file access.
-    -   **Google Sheets API**: Metadata and configuration retrieval.
+    -   **Google Sheets API**: Metadata and configuration.
 
 ### Core Libraries
 1.  **LlamaIndex**: Document processing, node parsing, embedding generation.
 2.  **Streamlit**: Web application framework.
 3.  **Google API Clients** (`google-api-python-client`, `oauth2client`, `gspread`): Google Drive and Sheets access.
+4.  **Celery**: Distributed task queue.
+5.  **Redis**: Celery message broker.
 
 ### Data Storage
 -   **Pinecone**: Primary vector storage.
--   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text storage, and configuration for data sources, column mappings, processing jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products.
-    -   **`parsed_documents` table**: Stores raw parsed content from LlamaParse as JSON, AI-generated tags, tagging model used, and tagging timestamp. Enables re-chunking and re-embedding without expensive re-parsing or re-tagging.
+-   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text, configuration for data sources, column mappings, jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products. The `parsed_documents` table stores raw parsed content, AI-generated tags, and tagging metadata.
 -   **Session State**: Temporary configuration and processing state.
-
-## Product Management & Multi-Tenant Support
-
-### Overview
-The application supports managing multiple products/startups with complete isolation through separate Pinecone indexes, API keys, and Google service account credentials. Each product can have its own default processing settings.
-
-### Product Configuration
-Each product in the database stores:
-- **Name & Description**: Product identifier and description
-- **Pinecone Configuration**: Dedicated index name, environment (serverless region), and default namespace
-- **API Key Secret Names**: References to Replit secrets containing:
-  - LlamaParse API key
-  - OpenAI API key (for embeddings and tagging)
-  - Pinecone API key
-  - Google service account JSON credentials
-- **Complete Processing Settings** (all settings are product-specific):
-  - **Parsing Settings**: Mode (auto/fast/premium), result type (markdown/text), language, multimodal support, page separator
-  - **Tagging Settings**: Enable/disable AI tagging, OpenAI model selection (gpt-4o/gpt-4o-mini/gpt-3.5-turbo), customizable prompt template with variable substitution
-  - **Chunking Settings**: Strategy (token/sentence/semantic), chunk size, chunk overlap, semantic buffer size
-  - **Embedding Settings**: Model (OpenAI text-embedding-3-small/large), custom dimension (optional, defaults to model maximum)
-- **Status**: Active/inactive flag
-
-### Secret Management
-Products use a **secret reference system** for security:
-
-**API Keys**: Product stores the secret name, not the actual key
-- Example: Product "Startup A" has `llamaparse_api_key_secret = "STARTUP_A_LLAMAPARSE_KEY"`
-- In Replit Secrets, you set: `STARTUP_A_LLAMAPARSE_KEY = "llx-actual-api-key-here"`
-- App reads: `os.getenv("STARTUP_A_LLAMAPARSE_KEY")`
-
-**Google Credentials**: Product stores secret name for JSON string
-- Example: Product has `google_credentials_secret = "STARTUP_A_GOOGLE_CREDS"`
-- In Replit Secrets, set the entire JSON as a string:
-  ```
-  STARTUP_A_GOOGLE_CREDS = '{"type": "service_account", "project_id": "...", ...}'
-  ```
-- App parses: `json.loads(os.getenv("STARTUP_A_GOOGLE_CREDS"))`
-
-### Integration with Pipeline
-When processing PDFs:
-1. Data source specifies which product it belongs to
-2. Pipeline loads complete product configuration including:
-   - **All API keys** from product-specific Replit secrets
-   - **Google Drive credentials** from product secret (enables per-product Drive access)
-   - **Pinecone configuration**: Index name, environment, default namespace
-   - **All parsing settings**: Mode, result type, language, multimodal, page separator
-   - **Tagging settings**: Enable flag, model, custom prompt template
-   - **All chunking settings**: Strategy, size, overlap, semantic buffer
-   - **Embedding settings**: OpenAI model selection (text-embedding-3-small/large), optional custom dimensions
-3. Product settings take precedence over any global/base configuration
-4. Pipeline execution flow:
-   - Download PDF → Parse with LlamaParse → Save parsed JSON
-   - If tagging enabled: Generate tags via OpenAI → Save tags → Add to metadata
-   - Chunk text (tags in metadata) → Generate embeddings → Upload to Pinecone (tags in vector metadata)
-5. Vectors stored in product-specific Pinecone index with all metadata including tags
-
-### Integration with Scheduler
-Scheduled jobs automatically use product settings:
-- Inherit product from data source
-- Load product-specific API keys and credentials
-- Route to correct Pinecone index
-- Log which product settings are being used
-
-### Benefits
-- **Complete Isolation**: Each product has separate vector storage
-- **Billing Separation**: Different API keys for different products
-- **Flexible Settings**: Each product can use different processing strategies
-- **Secure Credentials**: Each product can access different Google Drive accounts
-- **Scalability**: Easy to add new products without changing code
