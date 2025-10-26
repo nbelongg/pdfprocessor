@@ -10,6 +10,25 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
 
 
+# Check if database is available
+def is_database_available():
+    """Check if database is available for integration tests."""
+    try:
+        from utils.db.connection import get_db_connection
+        conn = get_db_connection()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
+# Skip integration tests if database is not available
+skip_if_no_db = pytest.mark.skipif(
+    not is_database_available(),
+    reason="Database not available - set DATABASE_URL to run integration tests"
+)
+
+
 # ============================================
 # Configuration Fixtures
 # ============================================

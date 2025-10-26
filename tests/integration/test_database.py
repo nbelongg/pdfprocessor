@@ -7,23 +7,30 @@ Tests actual database interactions with transaction rollback.
 import pytest
 import os
 import uuid
-from utils.db import (
+from tests.conftest import skip_if_no_db
+from utils.db.products import (
     create_product,
     get_product,
     update_product,
-    delete_product,
-    get_all_products,
+    delete_product
+)
+from utils.db.sources import (
     create_data_source,
-    get_data_source,
+    get_data_source
+)
+from utils.db.documents import (
     save_parsed_document,
-    get_parsed_document,
+    get_parsed_document
+)
+from utils.db.jobs import (
     create_processing_job,
-    get_job_status,
-    save_chunk
+    get_job_details,
+    save_chunks
 )
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestProductOperations:
     """Test product CRUD operations."""
     
@@ -77,32 +84,23 @@ class TestProductOperations:
         finally:
             delete_product(product_id)
     
-    def test_get_all_products(self):
-        """Test getting all products."""
-        # Create test products
-        product_id1 = create_product({
-            'name': f'Product A {uuid.uuid4().hex[:6]}',
-            'pinecone_index': 'test-index-1'
-        })
-        product_id2 = create_product({
-            'name': f'Product B {uuid.uuid4().hex[:6]}',
-            'pinecone_index': 'test-index-2'
+    def test_delete_product(self):
+        """Test deleting a product."""
+        product_id = create_product({
+            'name': f'Product to Delete {uuid.uuid4().hex[:6]}',
+            'pinecone_index': 'test-index'
         })
         
-        try:
-            # Get all
-            products = get_all_products()
-            assert len(products) >= 2, "Should have at least 2 products"
-            
-            product_ids = [p['id'] for p in products]
-            assert product_id1 in product_ids
-            assert product_id2 in product_ids
-        finally:
-            delete_product(product_id1)
-            delete_product(product_id2)
+        # Delete
+        delete_product(product_id)
+        
+        # Verify deletion
+        product = get_product(product_id)
+        assert product is None or product.get('id') != product_id
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestDataSourceOperations:
     """Test data source CRUD operations."""
     
@@ -137,6 +135,7 @@ class TestDataSourceOperations:
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestDocumentOperations:
     """Test document storage operations."""
     
@@ -172,6 +171,7 @@ class TestDocumentOperations:
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestJobOperations:
     """Test job tracking operations."""
     
@@ -205,7 +205,7 @@ class TestJobOperations:
             assert job_id is not None
             
             # Get
-            job = get_job_status(job_id)
+            job = get_job_details(job_id)
             assert job is not None
             assert job['status'] == 'pending'
             assert job['total_files'] == 10
@@ -214,6 +214,7 @@ class TestJobOperations:
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestChunkOperations:
     """Test chunk storage operations."""
     
@@ -241,7 +242,7 @@ class TestChunkOperations:
                 'total_files': 1
             })
             
-            chunk_data = {
+            chunk_data = [{
                 'job_id': job_id,
                 'product_id': product_id,
                 'file_id': 'test-file-id',
@@ -249,16 +250,17 @@ class TestChunkOperations:
                 'text_content': 'Test chunk content',
                 'metadata': {'test': 'metadata'},
                 'vector_id': f'vec-{uuid.uuid4().hex[:8]}'
-            }
+            }]
             
-            # Save
-            chunk_id = save_chunk(chunk_data)
-            assert chunk_id is not None
+            # Save (save_chunks expects a list)
+            save_chunks(chunk_data)
+            # No need to check return value as save_chunks doesn't return anything
         finally:
             delete_product(product_id)
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestTransactionBehavior:
     """Test database transaction behavior."""
     

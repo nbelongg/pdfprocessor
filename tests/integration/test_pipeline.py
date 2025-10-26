@@ -7,6 +7,7 @@ Tests end-to-end processing with mocked external services.
 import pytest
 from unittest.mock import patch, MagicMock
 import uuid
+from tests.conftest import skip_if_no_db
 
 
 @pytest.mark.integration
@@ -90,6 +91,7 @@ In conclusion, this research contributes to the field.
 
 @pytest.mark.integration
 @pytest.mark.slow
+@skip_if_no_db
 class TestFullPipeline:
     """Test complete pipeline with all components."""
     
@@ -166,6 +168,7 @@ class TestFullPipeline:
 
 
 @pytest.mark.integration
+@skip_if_no_db
 class TestConfigurationFlow:
     """Test configuration building and application."""
     
