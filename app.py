@@ -673,6 +673,7 @@ elif selected_page == "📚 Data Sources":
         if source_url and st.button("🔍 Auto-Detect Columns"):
             with st.spinner("Loading sheet columns..."):
                 try:
+                    import traceback
                     from utils.database import get_product_api_keys
                     product_api_keys = get_product_api_keys(selected_product_id)
                     google_creds = product_api_keys.get('GOOGLE_CREDENTIALS')
@@ -684,7 +685,11 @@ elif selected_page == "📚 Data Sources":
                         st.session_state.detected_columns = list(temp_data.columns) if temp_data is not None else []
                         st.success(f"Found {len(st.session_state.detected_columns)} columns")
                 except Exception as e:
+                    error_trace = traceback.format_exc()
+                    print(f"Error loading sheet: {error_trace}")
                     st.error(f"Error loading sheet: {str(e)}")
+                    with st.expander("🔍 Show full error details"):
+                        st.code(error_trace)
         
         available_columns = st.session_state.get('detected_columns', [])
         
