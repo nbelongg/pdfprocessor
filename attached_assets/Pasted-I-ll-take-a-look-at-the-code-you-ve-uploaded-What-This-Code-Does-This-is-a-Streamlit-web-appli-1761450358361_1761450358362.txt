@@ -1,0 +1,80 @@
+I'll take a look at the code you've uploaded.## What This Code Does
+
+This is a **Streamlit web application** for a multi-tenant PDF processing and embedding pipeline. Here's what it accomplishes:
+
+**Core Functionality:**
+- **PDF Processing Pipeline**: Parses PDFs from Google Drive using LlamaParse, chunks the content, creates embeddings, and stores vectors in Pinecone
+- **Multi-tenant Architecture**: Supports multiple products/startups with isolated credentials and separate Pinecone indexes
+- **Job Queue Management**: Uses Celery for background processing of PDF jobs
+- **Vector Search Testing**: Allows querying stored embeddings to test retrieval
+
+**Key Features:**
+1. **Product Management**: Create/manage multiple products with separate API keys and Pinecone indexes
+2. **Data Source Management**: Connect Google Drive folders as data sources
+3. **File Selection**: Choose specific PDFs to process
+4. **Preview Chunks**: See how documents will be chunked before processing
+5. **Job Queue**: Monitor processing jobs (pending/running/failed/completed)
+6. **Processing History**: View past jobs and their results
+7. **Search Interface**: Test vector similarity search on stored embeddings
+
+**Technical Stack:**
+- Streamlit for UI
+- LlamaParse for PDF parsing
+- OpenAI/HuggingFace for embeddings
+- Pinecone for vector storage
+- Database for tracking products, data sources, jobs, and chunks
+- Celery for async job processing
+
+---
+
+## Code Quality Rating: **6.5/10**
+
+### Strengths ✅
+- **Well-organized UI**: Clear multi-page navigation with logical flow
+- **Product isolation**: Good multi-tenant architecture concept
+- **Password protection**: Basic security layer
+- **Comprehensive features**: Covers the full pipeline from ingestion to search
+- **Session state management**: Proper use of Streamlit's state
+
+### Major Issues ❌
+
+1. **Massive monolithic file** (1,666 lines): Should be split into:
+   - Separate page modules
+   - Service layer for business logic
+   - Config management module
+   - UI components library
+
+2. **Security concerns**:
+   - Default password shown in UI (`admin123`)
+   - Secrets management relies on environment variables without validation
+   - No input sanitization visible
+
+3. **Code organization**:
+   - UI logic mixed with business logic
+   - Repetitive patterns (e.g., refresh buttons, session state checks)
+   - Hardcoded strings throughout
+   - No clear separation of concerns
+
+4. **Error handling**:
+   - Inconsistent (some try-catch blocks, many missing)
+   - Generic error messages
+   - No logging framework apparent
+
+5. **Maintainability issues**:
+   - Minimal documentation/comments
+   - Magic numbers and strings
+   - Tight coupling between components
+   - No apparent testing structure
+
+### Recommendations for Improvement
+
+1. **Refactor into modules**: `pages/`, `services/`, `components/`, `config/`
+2. **Add proper logging**: Replace `st.error()` with structured logging
+3. **Extract constants**: Create a `constants.py` for all magic values
+4. **Add type hints**: Already started, but incomplete
+5. **Implement proper secrets management**: Use secret manager, not env vars
+6. **Add unit tests**: Especially for business logic
+7. **Extract reusable components**: Many UI patterns repeat
+8. **Better error handling**: Specific exceptions with user-friendly messages
+
+This is a **functional prototype** that works but needs significant refactoring for production use. It demonstrates good product thinking but needs engineering best practices applied.
