@@ -54,11 +54,16 @@ The application features a modular architecture:
 -   **Metadata Transformation Rules**: Reusable rules for metadata manipulation.
 -   **Multi-Product/Multi-Startup Support**: Management of multiple products with isolated Pinecone indexes, API keys, and processing settings.
 -   **Parsed Content Persistence**: Raw LlamaParse output stored in PostgreSQL as JSON for re-chunking/re-embedding without re-parsing.
+-   **Job Management & Monitoring**: Real-time Celery job monitoring, on-demand processing triggers, job history with filtering, manual retry/cancel controls.
 
 ### UI/UX Decisions
 -   **Navigation**: Left sidebar with radio buttons for page selection.
 -   **Processing Settings**: Moved to product-specific configuration.
 -   **Products Tab**: Collapsible sections for organized product creation/editing.
+-   **Job Management Page**: Comprehensive job control with 3 tabs:
+    - **Monitor Jobs**: Real-time Celery task status, progress bars, error details, cancel controls
+    - **Trigger Processing**: On-demand processing from data sources (bypasses scheduler)
+    - **Job History**: Filtering by status, detailed job information and results
 
 ### Database Write Operations Pattern
 -   All database write operations utilize a standardized pattern with `get_db_transaction` and `with_db_error_handling` for automatic transaction management and consistent error handling (permanent `DatabaseError` or transient `DatabaseTransientError`).

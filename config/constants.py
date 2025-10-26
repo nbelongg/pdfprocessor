@@ -29,9 +29,6 @@ PAGES = {
     "home": Page("🔑", "Configuration", "home"),
     "products": Page("🏢", "Products", "products"),
     "data_sources": Page("📚", "Data Sources", "data_sources"),
-    "select_files": Page("📁", "Select Files", "select_files"),
-    "preview": Page("👁️", "Preview Chunks", "preview"),
-    "process": Page("🚀", "Process & Upload", "process"),
     "job_queue": Page("⚙️", "Job Management", "job_queue"),
     "status": Page("📊", "Status", "status"),
     "history": Page("📜", "History", "history"),
@@ -40,8 +37,7 @@ PAGES = {
 
 # Page order for navigation
 PAGE_ORDER = [
-    "home", "products", "data_sources", "select_files",
-    "preview", "process", "job_queue", "status", "history", "search"
+    "home", "products", "data_sources", "job_queue", "status", "history", "search"
 ]
 
 # ============================================
