@@ -5,7 +5,7 @@ channel = "stable-25_05"
 packages = ["glibcLocales"]
 
 [deployment]
-deploymentTarget = "cloudrun"
+deploymentTarget = "gce"
 run = ["streamlit", "run", "app.py", "--server.port", "5000"]
 
 [workflows]
