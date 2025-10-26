@@ -19,6 +19,7 @@ from utils.database import (
 )
 from utils.deduplication import check_all_layers, record_or_update_paper
 from utils.tagger import generate_tags_with_openai, validate_tags
+from utils.config_builder import build_product_config
 import os
 
 
@@ -80,60 +81,19 @@ def process_multi_source_pipeline(
             })
             continue
         
-        # Load product-specific configuration
-        product_config = config.copy()  # Start with base config
-        product_info = None
+        # Load product-specific configuration using centralized builder
         product_index = None
         
         if source_info.get('product_id'):
-            product_info = get_product(source_info['product_id'])
-            if product_info and product_info['active']:
-                # Get product-specific API keys and credentials from environment
-                product_api_keys = get_product_api_keys(source_info['product_id'])
-                
-                # Override API keys if product specifies them
-                if product_api_keys.get('LLAMA_CLOUD_API_KEY'):
-                    product_config['llama_api_key'] = product_api_keys['LLAMA_CLOUD_API_KEY']
-                if product_api_keys.get('OPENAI_API_KEY'):
-                    product_config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
-                if product_api_keys.get('PINECONE_API_KEY'):
-                    product_config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
-                if product_api_keys.get('GOOGLE_CREDENTIALS'):
-                    product_config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
-                
-                # Use product-specific Pinecone index and settings
-                product_config['index_name'] = product_info['pinecone_index']
-                product_config['pinecone_environment'] = product_info.get('pinecone_environment', 'us-east-1')
-                product_config['default_namespace'] = product_info.get('default_namespace', 'default')
-                
-                # Use product-specific parsing settings
-                product_config['parsing_mode'] = product_info.get('parsing_mode', 'auto')
-                product_config['result_type'] = product_info.get('result_type', 'markdown')
-                product_config['language'] = product_info.get('language', 'en')
-                product_config['use_vendor_multimodal'] = product_info.get('use_vendor_multimodal', True)
-                product_config['page_separator'] = product_info.get('page_separator', '\n---\n')
-                
-                # Use product-specific chunking settings
-                product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
-                product_config['chunk_size'] = product_info.get('default_chunk_size', 1024)
-                product_config['chunk_overlap'] = product_info.get('chunk_overlap', 200)
-                product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
-                
-                # Use product-specific embedding settings
-                product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
-                product_config['embedding_dimension'] = product_info.get('embedding_dimension')
-                
-                # Use product-specific tagging settings
-                product_config['tagging_enabled'] = product_info.get('tagging_enabled', False)
-                product_config['tagging_model'] = product_info.get('tagging_model', 'gpt-4o-mini')
-                product_config['tagging_prompt_template'] = product_info.get('tagging_prompt_template')
-                product_config['tagging_config'] = product_info.get('tagging_config', {})
+            try:
+                # Build product-specific config using centralized function
+                product_config = build_product_config(source_info['product_id'], base_config=config)
                 
                 # Initialize product-specific Pinecone index if not already done
                 if not preview_mode and product_index is None:
                     product_index = initialize_pinecone(product_config)
-            else:
-                # Product not found or inactive, use global config
+            except ValueError as e:
+                # Product not found or config error, use global config
                 product_config = config
                 product_index = pinecone_index
         else:
