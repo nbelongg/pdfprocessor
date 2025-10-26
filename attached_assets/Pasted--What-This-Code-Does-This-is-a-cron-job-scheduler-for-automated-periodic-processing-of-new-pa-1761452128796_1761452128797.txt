@@ -1,0 +1,308 @@
+## What This Code Does
+
+This is a **cron job scheduler** for automated periodic processing of new papers from data sources. Here's what it accomplishes:
+
+**Core Functionality:**
+
+1. **Schedule Management**: Runs scheduled jobs based on timing rules:
+   - Hourly
+   - Daily (at specific hour)
+   - Weekly (specific day/hour)
+   - Custom interval
+
+2. **Incremental Processing**: Tracks last processed row per data source and only processes new papers since last run
+
+3. **Automated Pipeline Execution**:
+   - Loads new papers from Google Sheets
+   - Applies product-specific configuration
+   - Processes through the multi-source pipeline
+   - Records results and updates schedule
+
+4. **Result Tracking**: Records papers found, processed, duplicates skipped, and failures
+
+**Workflow:**
+```
+Check enabled jobs → If due → Load new papers → Process → Record results → Calculate next run
+```
+
+---
+
+## Code Quality Rating: **6/10**
+
+### Strengths ✅
+
+1. **Clear purpose**: Focused, single responsibility
+2. **Schedule flexibility**: Multiple schedule types supported
+3. **Incremental processing**: Smart approach to avoid reprocessing
+4. **Product isolation**: Respects multi-tenant architecture
+5. **Basic error handling**: Try-catch with status recording
+6. **Progress visibility**: Print statements for monitoring
+
+### Critical Issues 🚨
+
+1. **No concurrency control**: Missing distributed lock mechanism
+   ```python
+   # If cron runs overlapping jobs, could process same papers twice
+   # Need: Redis lock, file lock, or DB-based locking
+   ```
+
+2. **Bug in weekly scheduling**:
+   ```python
+   # Line 38-41: Logic error
+   days_ahead = day_of_week - current_time.weekday()
+   if days_ahead <= 0:  # Should be < 0
+       days_ahead += 7  # Will schedule wrong day if today is the target
+   ```
+
+3. **Uses `print()` instead of logging**:
+   ```python
+   print(f"Running scheduled job...")  # Should use logger
+   ```
+
+4. **No retry logic**: Transient failures (API timeouts) kill the job
+   - Should retry failed papers
+   - Should have circuit breaker for repeated failures
+
+5. **Hardcoded values**:
+   ```python
+   max_papers_per_run: int = 100  # Should be configurable per job
+   ```
+
+6. **Configuration repetition**: Same verbose config building as Celery tasks (lines 139-189)
+
+7. **No validation**: `schedule_config` could have invalid values
+   ```python
+   hour = schedule_config.get('hour', 0)  # Could be 25, -1, "abc"
+   ```
+
+8. **Credentials handling**: Loading from file inside function
+   ```python
+   # Lines 87-92: Should be abstracted
+   with open(google_creds_path, 'r') as f:
+       google_credentials = json.load(f)
+   ```
+
+### Medium Issues ⚠️
+
+1. **Missing monitoring**: No metrics, alerts, or health checks
+2. **Error information loss**: Exceptions caught but details not preserved
+3. **No job timeout**: Long-running jobs could block scheduler
+4. **State management**: Relies on DB state without consistency checks
+5. **No dry-run mode**: Can't test schedules without processing
+6. **Limited scheduling**: No cron-style expressions (e.g., "*/15 * * * *")
+
+### Recommendations for Improvement
+
+#### 1. **Add distributed locking**:
+```python
+import redis
+from contextlib import contextmanager
+
+@contextmanager
+def scheduler_lock(job_id: int, timeout: int = 3600):
+    """Prevent concurrent execution of same job."""
+    redis_client = redis.Redis()
+    lock_key = f"scheduler_lock:{job_id}"
+    
+    acquired = redis_client.set(lock_key, "1", nx=True, ex=timeout)
+    if not acquired:
+        raise RuntimeError(f"Job {job_id} already running")
+    
+    try:
+        yield
+    finally:
+        redis_client.delete(lock_key)
+
+# Usage in run_scheduler:
+with scheduler_lock(job['id']):
+    result = run_scheduled_job(job)
+```
+
+#### 2. **Fix weekly scheduling bug**:
+```python
+elif schedule_type == 'weekly':
+    day_of_week = schedule_config.get('day_of_week', 0)
+    hour = schedule_config.get('hour', 0)
+    
+    days_ahead = day_of_week - current_time.weekday()
+    if days_ahead < 0:  # Changed from <= to 
+        days_ahead += 7
+    elif days_ahead == 0 and current_time.hour >= hour:
+        days_ahead = 7  # Schedule for next week if already passed today
+    
+    next_run = current_time + timedelta(days=days_ahead)
+    next_run = next_run.replace(hour=hour, minute=0, second=0, microsecond=0)
+    return next_run
+```
+
+#### 3. **Add proper logging**:
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('scheduler.log'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+# Replace all print() with:
+logger.info(f"Running scheduled job: {scheduled_job['job_name']}")
+logger.error(f"Error running job: {str(e)}", exc_info=True)
+```
+
+#### 4. **Add validation**:
+```python
+def validate_schedule_config(schedule_type: str, config: Dict) -> None:
+    """Validate schedule configuration."""
+    if schedule_type == 'daily':
+        hour = config.get('hour', 0)
+        if not (0 <= hour <= 23):
+            raise ValueError(f"Invalid hour: {hour}")
+    
+    elif schedule_type == 'weekly':
+        day = config.get('day_of_week', 0)
+        if not (0 <= day <= 6):
+            raise ValueError(f"Invalid day_of_week: {day}")
+        hour = config.get('hour', 0)
+        if not (0 <= hour <= 23):
+            raise ValueError(f"Invalid hour: {hour}")
+    
+    elif schedule_type == 'interval':
+        hours = config.get('interval_hours', 24)
+        if hours <= 0:
+            raise ValueError(f"interval_hours must be positive: {hours}")
+    
+    max_papers = config.get('max_papers_per_run', 100)
+    if not (1 <= max_papers <= 10000):
+        raise ValueError(f"max_papers_per_run out of range: {max_papers}")
+```
+
+#### 5. **Extract config builder**:
+```python
+def build_processing_config(
+    source_info: Dict,
+    schedule_config: Dict,
+    google_credentials: Dict
+) -> Dict:
+    """Build processing configuration from multiple sources."""
+    
+    # Base config from environment
+    config = {
+        'llama_api_key': os.getenv('LLAMA_CLOUD_API_KEY'),
+        'pinecone_api_key': os.getenv('PINECONE_API_KEY'),
+        'openai_api_key': os.getenv('OPENAI_API_KEY'),
+        'google_credentials': google_credentials,
+        # ... other defaults
+    }
+    
+    # Apply schedule overrides
+    schedule_overrides = {
+        'parsing_mode', 'result_type', 'language', 
+        'chunking_strategy', 'chunk_size', 'embedding_model'
+    }
+    config.update({
+        k: v for k, v in schedule_config.items() 
+        if k in schedule_overrides
+    })
+    
+    # Apply product-specific overrides
+    if source_info.get('product_id'):
+        apply_product_config(config, source_info['product_id'])
+    
+    return config
+```
+
+#### 6. **Add retry mechanism**:
+```python
+def run_scheduled_job_with_retry(scheduled_job: Dict, max_retries: int = 3) -> Dict:
+    """Run job with retry logic."""
+    for attempt in range(max_retries):
+        try:
+            return run_scheduled_job(scheduled_job)
+        except TransientError as e:
+            if attempt == max_retries - 1:
+                raise
+            
+            wait_time = 2 ** attempt  # Exponential backoff
+            logger.warning(
+                f"Job failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                f"Retrying in {wait_time}s..."
+            )
+            time.sleep(wait_time)
+```
+
+#### 7. **Add monitoring hooks**:
+```python
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class JobMetrics:
+    job_id: int
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: float
+    papers_found: int
+    papers_processed: int
+    papers_failed: int
+    status: str
+
+def emit_metrics(metrics: JobMetrics):
+    """Send metrics to monitoring system (DataDog, CloudWatch, etc)."""
+    # Could integrate with monitoring service
+    pass
+
+# In run_scheduler:
+start_time = datetime.now()
+result = run_scheduled_job(job)
+end_time = datetime.now()
+
+metrics = JobMetrics(
+    job_id=job['id'],
+    start_time=start_time,
+    end_time=end_time,
+    duration_seconds=(end_time - start_time).total_seconds(),
+    papers_found=result.get('papers_found', 0),
+    papers_processed=result.get('papers_processed', 0),
+    papers_failed=result.get('papers_failed', 0),
+    status=result['status']
+)
+emit_metrics(metrics)
+```
+
+#### 8. **Add constants**:
+```python
+# At top of file
+DEFAULT_MAX_PAPERS_PER_RUN = 100
+DEFAULT_RETRY_ATTEMPTS = 3
+SCHEDULER_LOCK_TIMEOUT = 3600  # 1 hour
+GOOGLE_CREDS_ENV_VAR = 'GOOGLE_CREDENTIALS_PATH'
+```
+
+### Summary
+
+This is **functional production code with significant operational risks**. The main concerns are:
+
+**Critical fixes needed:**
+1. Add distributed locking (prevents duplicate runs)
+2. Fix weekly scheduling bug
+3. Add proper logging
+4. Add retry logic
+
+**Important improvements:**
+- Input validation
+- Monitoring/alerting
+- Config abstraction
+- Better error handling
+
+**Comparison to previous files:**
+- Better than the Streamlit monolith (more focused)
+- Similar quality to Celery tasks but missing retry logic
+- Shows same config repetition pattern across the codebase
+
+The code works but needs hardening for reliable production operation. The lack of concurrency control is the most serious issue - overlapping cron runs could cause duplicate processing.
