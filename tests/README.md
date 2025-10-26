@@ -21,10 +21,14 @@ tests/
 
 ## Running Tests
 
-### All Unit Tests
+### Default (Unit Tests Only)
 ```bash
+pytest
+# Or explicitly:
 pytest tests/unit/ -v
 ```
+
+**Note**: By default, pytest is configured to run only unit tests (tests/unit/). This ensures fast, reliable CI/CD without external dependencies.
 
 ### Specific Test File
 ```bash
@@ -33,7 +37,7 @@ pytest tests/unit/test_config_models.py -v
 
 ### With Coverage Report
 ```bash
-pytest tests/unit/ --cov=utils --cov=config --cov-report=html
+pytest --cov=utils --cov=config --cov-report=html
 ```
 
 ### Run Only Fast Tests
@@ -41,12 +45,15 @@ pytest tests/unit/ --cov=utils --cov=config --cov-report=html
 pytest -m "unit and not slow" -v
 ```
 
-### Integration Tests (Requires Database)
+### Integration Tests (Requires Database - Not Run by Default)
 ```bash
 pytest tests/integration/ -v
 ```
 
-**Note**: Integration tests require a configured PostgreSQL database with the `DATABASE_URL` environment variable set.
+**Important**: Integration tests are NOT run by default. They require:
+- A configured PostgreSQL database with `DATABASE_URL` environment variable
+- External service access (Google Drive, Sheets, etc.)
+- They are kept for future use but skipped in standard test runs
 
 ## Test Coverage Summary
 
