@@ -11,8 +11,8 @@ from config.constants import (
 )
 
 # Import page modules
-from pages import home, products, data_sources, select_files, preview
-from pages import process, job_queue, status, history, search
+from page_modules import home, products, data_sources, select_files, preview
+from page_modules import process, job_queue, status, history, search
 
 # Import database utilities for sidebar stats
 from utils.database import get_products, get_data_sources
@@ -107,10 +107,10 @@ st.sidebar.markdown("---")
 # Quick stats
 st.sidebar.markdown("### 📊 Quick Stats")
 try:
-    products = get_products(active_only=True)
-    data_sources = get_data_sources()
-    st.sidebar.metric("Active Products", len(products))
-    st.sidebar.metric("Data Sources", len(data_sources))
+    product_list = get_products(active_only=True)
+    source_list = get_data_sources()
+    st.sidebar.metric("Active Products", len(product_list))
+    st.sidebar.metric("Data Sources", len(source_list))
 except Exception as e:
     st.sidebar.error(f"Error loading stats: {str(e)}")
 
