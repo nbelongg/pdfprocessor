@@ -30,8 +30,8 @@ def test_database_writes_happy_path():
     logger.info("\n=== TEST 1: Database Writes Happy Path ===")
     
     try:
-        # Test 1: Create processing job
-        job_id = "test-job-001"
+        # Test 1: Create processing job (use unique ID)
+        job_id = f"test-job-{os.urandom(4).hex()}"
         config = {"test": "config"}
         result = create_processing_job(job_id, config)
         logger.info(f"✓ Created processing job: {job_id}")
