@@ -1,0 +1,51 @@
+4. JOB MONITORING & CONTROL (Currently: Fire-and-Forget)
+Current Scheduler Behavior:
+
+Scheduler runs via cron (e.g., hourly, daily)
+Celery workers process jobs in background
+Only way to see status: check database or logs manually
+No UI to pause, cancel, or retry jobs
+Manual Control Would Enable:
+
+Real-time progress: "Show me which of my 50 papers are processing right now"
+Celery task status: "5 running, 20 pending, 2 failed, 23 completed"
+Error details: "Why did paper X fail? Show me the full error message"
+Manual retry: "Retry the 2 failed tasks without re-processing successful ones"
+Cancel jobs: "Stop this batch, I configured it wrong"
+Queue visibility: "How many jobs are in the queue? When will mine start?"
+Celery Metrics Available:
+
+- Task state: PENDING, STARTED, PROGRESS, SUCCESS, FAILURE
+- Progress percentage: current/total
+- Error messages and stack traces
+- Task ID, job ID, file ID
+- Start time, duration
+- Worker assignment
+Use Cases:
+
+User submits 100 papers, wants real-time progress bar
+5 papers failed due to API timeout - user wants to retry just those 5
+User realizes config is wrong mid-processing - wants to cancel
+User wants to see detailed error for debugging
+Multiple users sharing workers - want to see queue depth
+5. ON-DEMAND PROCESSING (Currently: Scheduled Only)
+Current Scheduler Behavior:
+
+Processing only happens on schedule (hourly, daily, weekly)
+User adds urgent paper but must wait for next scheduled run
+No way to trigger "process now" without manually running scheduler.py
+Manual Control Would Enable:
+
+Process now button: "Don't wait for the schedule, process these 5 papers immediately"
+Bypass schedule: "I just added important papers, process them now"
+On-demand testing: "Process one paper to test my new configuration"
+Selective source processing: "Only run Source A right now, skip B and C"
+Use Cases:
+
+User adds urgent paper at 3pm but schedule runs at midnight
+User is testing new config and doesn't want to wait hours
+User wants to process specific data source without waiting for scheduler
+6. BATCH HISTORY & RE-PROCESSING (Currently: Limited Visibility)
+Current Scheduler Behavior:
+
+Processing history stored in database

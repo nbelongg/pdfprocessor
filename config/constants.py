@@ -32,7 +32,7 @@ PAGES = {
     "select_files": Page("📁", "Select Files", "select_files"),
     "preview": Page("👁️", "Preview Chunks", "preview"),
     "process": Page("🚀", "Process & Upload", "process"),
-    "job_queue": Page("⚙️", "Job Queue", "job_queue"),
+    "job_queue": Page("⚙️", "Job Management", "job_queue"),
     "status": Page("📊", "Status", "status"),
     "history": Page("📜", "History", "history"),
     "search": Page("🔍", "Search Test", "search"),
