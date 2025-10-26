@@ -58,13 +58,14 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Di
         return df
         
     except APIError as e:
-        # Retry on rate limit (429) or service unavailable (503)
+        # Only wrap transient errors (rate limit, service unavailable)
+        # Let permission/auth/not found errors propagate
         if hasattr(e, 'response') and e.response:
             status_code = e.response.get('code', 0)
             if status_code in [429, 503]:
                 raise TransientError(f"Google Sheets API rate limit or service unavailable: {e}") from e
-        # Other API errors might also be transient
-        raise TransientError(f"Google Sheets API error: {e}") from e
+        # Don't wrap other API errors (403, 404, etc.) - let them propagate
+        raise
         
     except (socket.timeout, socket.error, http.client.HTTPException, ConnectionError) as e:
         # Network errors are transient, should retry

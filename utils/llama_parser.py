@@ -90,10 +90,14 @@ def parse_pdf_with_llamaparse(
         raise TransientError(f"Network or timeout error parsing PDF with LlamaParse: {e}") from e
         
     except RequestException as e:
-        # Check if it's a rate limit or server error (HTTP 429, 503)
+        # Only wrap transient HTTP errors (rate limit, service unavailable)
+        # Let auth/config errors (401, 403, 422) propagate
         if hasattr(e, 'response') and e.response is not None:
             status_code = e.response.status_code
             if status_code in [429, 503]:
                 raise TransientError(f"LlamaParse API rate limit or service unavailable: {e}") from e
-        # Other request exceptions might be transient too
-        raise TransientError(f"LlamaParse API error: {e}") from e
+            elif status_code in [401, 403, 422]:
+                # Auth/config errors - don't retry, let them fail immediately
+                raise ValueError(f"LlamaParse configuration error (status {status_code}): {e}") from e
+        # Unknown request exceptions - don't wrap, let them propagate
+        raise
