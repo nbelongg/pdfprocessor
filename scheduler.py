@@ -43,6 +43,7 @@ from utils.database import (
 from utils.google_sheets import load_sheet_data
 from utils.multi_source_pipeline import process_multi_source_pipeline
 from utils.exceptions import TransientError
+from utils.config_builder import build_product_config
 
 
 # ============================================
@@ -63,14 +64,6 @@ RETRY_MAX_WAIT = 60  # seconds
 LOG_FILE = 'scheduler.log'
 LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 LOG_BACKUP_COUNT = 5
-
-# Product config mapping (reduces duplication)
-PRODUCT_CONFIG_MAPPING = {
-    'llama_api_key': 'LLAMA_CLOUD_API_KEY',
-    'openai_api_key': 'OPENAI_API_KEY',
-    'pinecone_api_key': 'PINECONE_API_KEY',
-    'google_credentials': 'GOOGLE_CREDENTIALS'
-}
 
 
 # ============================================
@@ -425,35 +418,17 @@ def build_processing_config(
         if key in schedule_config:
             config[key] = schedule_config[key]
     
-    # Apply product-specific overrides (highest priority)
+    # Apply product-specific overrides (highest priority) using centralized builder
     if source_info.get('product_id'):
-        product_info = get_product(source_info['product_id'])
-        if product_info and product_info['active']:
-            logger.info(f"Using product-specific settings for: {product_info['name']}")
-            
-            # Get product-specific API keys from environment
-            product_api_keys = get_product_api_keys(source_info['product_id'])
-            
-            # Use mapping dict to reduce repetition
-            for config_key, api_key in PRODUCT_CONFIG_MAPPING.items():
-                if product_api_keys.get(api_key):
-                    config[config_key] = product_api_keys[api_key]
-                    logger.info(f"  - Using product-specific {api_key}")
-            
-            # Use product-specific Pinecone index
-            config['index_name'] = product_info['pinecone_index']
-            logger.info(f"  - Using product-specific Pinecone index: {product_info['pinecone_index']}")
-            
-            # Use product-specific default settings
-            if product_info.get('default_chunking_strategy'):
-                config['chunking_strategy'] = product_info['default_chunking_strategy']
-            if product_info.get('default_chunk_size'):
-                config['chunk_size'] = product_info['default_chunk_size']
-            if product_info.get('default_embedding_model'):
-                config['embedding_model'] = product_info['default_embedding_model']
-            
-            logger.info(f"  - Chunking: {config['chunking_strategy']} (size: {config['chunk_size']})")
-            logger.info(f"  - Embedding model: {config['embedding_model']}")
+        try:
+            product_config = build_product_config(source_info['product_id'], base_config=config)
+            config.update(product_config)
+            logger.info(f"Applied product-specific configuration")
+            logger.info(f"  - Pinecone index: {config.get('index_name')}")
+            logger.info(f"  - Chunking: {config.get('chunking_strategy')} (size: {config.get('chunk_size')})")
+            logger.info(f"  - Embedding model: {config.get('embedding_model')}")
+        except ValueError as e:
+            logger.error(f"Failed to build product config: {e}")
     
     return config
 
