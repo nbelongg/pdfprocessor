@@ -31,8 +31,6 @@ def render():
     # Initialize session state
     if 'job_auto_refresh' not in st.session_state:
         st.session_state.job_auto_refresh = False
-    if 'job_refresh_countdown' not in st.session_state:
-        st.session_state.job_refresh_countdown = 10
     if 'job_page_monitor' not in st.session_state:
         st.session_state.job_page_monitor = 1
     if 'job_page_history' not in st.session_state:
@@ -78,14 +76,14 @@ def _render_monitor_jobs():
     
     with col1:
         if st.button("🔄 Refresh Now", use_container_width=True):
-            st.session_state.job_refresh_countdown = 10
+            st.session_state.job_last_refresh_time = time.time()
             st.rerun()
     
     with col2:
         auto_refresh = st.checkbox("Auto-refresh (10s)", value=st.session_state.job_auto_refresh)
         if auto_refresh != st.session_state.job_auto_refresh:
             st.session_state.job_auto_refresh = auto_refresh
-            st.session_state.job_refresh_countdown = 10
+            st.session_state.job_last_refresh_time = time.time()
             st.rerun()
     
     with col3:
@@ -101,22 +99,17 @@ def _render_monitor_jobs():
             st.session_state.job_page_monitor = 1
             st.session_state.monitor_last_page_size = jobs_per_page
     
-    # Auto-refresh with countdown timer (truly non-blocking)
-    countdown_placeholder = st.empty()
+    # Auto-refresh (non-blocking, checks elapsed time and reruns after 10s)
     if st.session_state.job_auto_refresh:
         elapsed = time.time() - st.session_state.job_last_refresh_time
+        
+        # Display countdown info (approximate - updates on user interaction or after 10s)
         remaining = max(0, 10 - int(elapsed))
+        st.info(f"⏱️ Auto-refresh enabled (next refresh in ~{remaining}s)")
         
-        with countdown_placeholder.container():
-            st.info(f"⏱️ Auto-refreshing in {remaining} seconds...")
-        
-        # Check if 10 seconds have passed
+        # Trigger refresh if 10 seconds have elapsed (non-blocking check)
         if elapsed >= 10:
             st.session_state.job_last_refresh_time = time.time()
-            st.rerun()
-        elif remaining < 10:
-            # Schedule next check in 1 second without blocking
-            import asyncio
             st.rerun()
     
     # Get all jobs with pagination support
