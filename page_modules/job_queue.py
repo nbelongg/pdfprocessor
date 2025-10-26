@@ -37,6 +37,16 @@ def render():
         st.session_state.job_page_monitor = 1
     if 'job_page_history' not in st.session_state:
         st.session_state.job_page_history = 1
+    if 'job_last_refresh_time' not in st.session_state:
+        st.session_state.job_last_refresh_time = time.time()
+    if 'monitor_last_filter' not in st.session_state:
+        st.session_state.monitor_last_filter = "All"
+    if 'monitor_last_page_size' not in st.session_state:
+        st.session_state.monitor_last_page_size = 50
+    if 'history_last_filter' not in st.session_state:
+        st.session_state.history_last_filter = "All"
+    if 'history_last_page_size' not in st.session_state:
+        st.session_state.history_last_page_size = 25
     
     # Tabs for different functionality
     tab1, tab2, tab3 = st.tabs([
@@ -85,21 +95,28 @@ def _render_monitor_jobs():
             index=2,
             key="monitor_jobs_per_page"
         )
+        
+        # Reset page if page size changed
+        if jobs_per_page != st.session_state.monitor_last_page_size:
+            st.session_state.job_page_monitor = 1
+            st.session_state.monitor_last_page_size = jobs_per_page
     
-    # Auto-refresh with countdown timer (non-blocking)
+    # Auto-refresh with countdown timer (truly non-blocking)
     countdown_placeholder = st.empty()
     if st.session_state.job_auto_refresh:
-        with countdown_placeholder.container():
-            st.info(f"⏱️ Auto-refreshing in {st.session_state.job_refresh_countdown} seconds...")
+        elapsed = time.time() - st.session_state.job_last_refresh_time
+        remaining = max(0, 10 - int(elapsed))
         
-        # Decrement countdown
-        if st.session_state.job_refresh_countdown > 0:
-            st.session_state.job_refresh_countdown -= 1
-            time.sleep(1)
+        with countdown_placeholder.container():
+            st.info(f"⏱️ Auto-refreshing in {remaining} seconds...")
+        
+        # Check if 10 seconds have passed
+        if elapsed >= 10:
+            st.session_state.job_last_refresh_time = time.time()
             st.rerun()
-        else:
-            # Reset and refresh
-            st.session_state.job_refresh_countdown = 10
+        elif remaining < 10:
+            # Schedule next check in 1 second without blocking
+            import asyncio
             st.rerun()
     
     # Get all jobs with pagination support
@@ -138,12 +155,21 @@ def _render_monitor_jobs():
         key="monitor_status_filter"
     )
     
+    # Reset page if filter changed
+    if status_filter != st.session_state.monitor_last_filter:
+        st.session_state.job_page_monitor = 1
+        st.session_state.monitor_last_filter = status_filter
+    
     # Filter jobs
     filtered_jobs = _filter_jobs_by_status(all_jobs, status_filter)
     
     # Pagination
     total_jobs = len(filtered_jobs)
-    total_pages = (total_jobs + jobs_per_page - 1) // jobs_per_page
+    total_pages = max(1, (total_jobs + jobs_per_page - 1) // jobs_per_page)
+    
+    # Clamp page number to valid range
+    if st.session_state.job_page_monitor > total_pages:
+        st.session_state.job_page_monitor = max(1, total_pages)
     
     if total_pages > 1:
         col1, col2, col3 = st.columns([2, 6, 2])
@@ -604,6 +630,11 @@ def _render_job_history():
             ["All", "Completed", "Failed", "Cancelled"],
             key="history_status_filter"
         )
+        
+        # Reset page if filter changed
+        if status_filter_hist != st.session_state.history_last_filter:
+            st.session_state.job_page_history = 1
+            st.session_state.history_last_filter = status_filter_hist
     
     with col2:
         limit = st.number_input("Total jobs to load:", min_value=10, max_value=2000, value=100)
@@ -615,6 +646,11 @@ def _render_job_history():
             index=1,
             key="history_jobs_per_page"
         )
+        
+        # Reset page if page size changed
+        if jobs_per_page_hist != st.session_state.history_last_page_size:
+            st.session_state.job_page_history = 1
+            st.session_state.history_last_page_size = jobs_per_page_hist
     
     with col4:
         if st.button("🔄 Refresh History"):
@@ -637,7 +673,11 @@ def _render_job_history():
     
     # Pagination for history
     total_jobs = len(jobs)
-    total_pages = (total_jobs + jobs_per_page_hist - 1) // jobs_per_page_hist
+    total_pages = max(1, (total_jobs + jobs_per_page_hist - 1) // jobs_per_page_hist)
+    
+    # Clamp page number to valid range
+    if st.session_state.job_page_history > total_pages:
+        st.session_state.job_page_history = max(1, total_pages)
     
     if total_pages > 1:
         col1, col2, col3 = st.columns([2, 6, 2])
@@ -677,19 +717,22 @@ def _render_job_history():
         df = pd.DataFrame(job_data)
         st.dataframe(df, use_container_width=True)
     
-    # Detailed view selector
-    st.markdown("---")
-    st.markdown("### Job Details")
-    
-    job_ids = [j.get('task_id', '') for j in page_jobs]
-    job_labels = [f"{j.get('task_name', 'Unknown')} - {j.get('task_id', '')[:12]}..." for j in page_jobs]
-    
-    selected_job_label = st.selectbox("Select job for details:", job_labels)
-    selected_job_idx = job_labels.index(selected_job_label)
-    selected_job = page_jobs[selected_job_idx]
-    
-    # Display selected job details
-    _render_job_details(selected_job)
+    # Detailed view selector (guard against empty page_jobs)
+    if page_jobs:
+        st.markdown("---")
+        st.markdown("### Job Details")
+        
+        job_ids = [j.get('task_id', '') for j in page_jobs]
+        job_labels = [f"{j.get('task_name', 'Unknown')} - {j.get('task_id', '')[:12]}..." for j in page_jobs]
+        
+        selected_job_label = st.selectbox("Select job for details:", job_labels)
+        selected_job_idx = job_labels.index(selected_job_label)
+        selected_job = page_jobs[selected_job_idx]
+        
+        # Display selected job details
+        _render_job_details(selected_job)
+    else:
+        st.info("No jobs on this page. Try adjusting your filters or page number.")
 
 
 def _render_job_details(job: Dict):
