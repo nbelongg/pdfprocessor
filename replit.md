@@ -8,6 +8,30 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
+### Code Architecture (Refactored October 2025)
+The application has been refactored from a monolithic 1,665-line app.py to a clean modular architecture:
+
+- **app.py** (152 lines): Main router that handles authentication, sidebar navigation, and page routing
+- **config/constants.py**: Centralized configuration including page definitions, default values, UI messages, and help text
+- **components/common.py**: Reusable UI components (page headers, refresh buttons, status messages)
+- **page_modules/** (formerly `pages/`): Modular page implementations
+  - `home.py`: Configuration page
+  - `products.py`: Product management with full CRUD operations
+  - `data_sources.py`: Data source management (stub, to be fully extracted)
+  - `select_files.py`, `preview.py`, `process.py`: PDF processing workflow (stubs)
+  - `job_queue.py`: Job queue monitoring (stub)
+  - `status.py`: Processing status display
+  - `history.py`: Processing history with detailed job views
+  - `search.py`: Vector search testing interface
+- **utils/**: Backend utilities for database, embeddings, parsing, etc. (unchanged)
+
+**Key Benefits:**
+- 91% reduction in main app.py file size (1,665 → 152 lines)
+- Clear separation of concerns with single-responsibility modules
+- Easier maintenance and testing
+- Security improvement: removed hardcoded password display from UI
+- Fixed Streamlit auto-discovery conflict by using `page_modules/` instead of `pages/`
+
 ### Application Framework
 - **Frontend**: Streamlit for interactive user interface.
 - **Authentication**: Password-based via environment variables.
