@@ -39,6 +39,7 @@ from utils.database import (
 )
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.exceptions import TransientError
+from utils.config_builder import build_product_config
 
 
 # ============================================
@@ -71,36 +72,6 @@ PROGRESS_CHUNK = 40
 PROGRESS_EMBED = 60
 PROGRESS_UPLOAD = 80
 PROGRESS_COMPLETE = 100
-
-# Product config mapping (reduces duplication)
-PRODUCT_CONFIG_MAPPING = {
-    'llama_api_key': 'LLAMA_CLOUD_API_KEY',
-    'openai_api_key': 'OPENAI_API_KEY',
-    'pinecone_api_key': 'PINECONE_API_KEY',
-    'google_credentials': 'GOOGLE_CREDENTIALS'
-}
-
-# Product settings mapping
-PRODUCT_SETTINGS_MAPPING = {
-    'index_name': 'pinecone_index',
-    'pinecone_environment': 'pinecone_environment',
-    'default_namespace': 'default_namespace',
-    'parsing_mode': 'parsing_mode',
-    'result_type': 'result_type',
-    'language': 'language',
-    'use_vendor_multimodal': 'use_vendor_multimodal',
-    'page_separator': 'page_separator',
-    'chunking_strategy': 'default_chunking_strategy',
-    'chunk_size': 'default_chunk_size',
-    'chunk_overlap': 'chunk_overlap',
-    'semantic_buffer_size': 'semantic_buffer_size',
-    'embedding_model': 'default_embedding_model',
-    'embedding_dimension': 'embedding_dimension',
-    'tagging_enabled': 'tagging_enabled',
-    'tagging_model': 'tagging_model',
-    'tagging_prompt_template': 'tagging_prompt_template',
-    'tagging_config': 'tagging_config'
-}
 
 
 # ============================================
@@ -171,34 +142,6 @@ def call_with_retry(
     raise RuntimeError("Max retries exceeded")
 
 
-def apply_product_config(config: Dict[str, Any], product_info: Dict[str, Any]) -> None:
-    """
-    Apply product-specific configuration in place.
-    
-    Simplifies config building by using mapping dictionaries instead of
-    repetitive if-statements.
-    
-    Args:
-        config: Configuration dictionary to update
-        product_info: Product information from database
-    """
-    if not product_info or not product_info['active']:
-        return
-    
-    logger.info(f"Applying product-specific settings: {product_info['name']}")
-    
-    # Apply API keys using mapping dict
-    product_api_keys = get_product_api_keys(product_info['id'])
-    for config_key, api_key in PRODUCT_CONFIG_MAPPING.items():
-        if product_api_keys.get(api_key):
-            config[config_key] = product_api_keys[api_key]
-            logger.debug(f"  - Applied {api_key}")
-    
-    # Apply product settings using mapping dict
-    for config_key, product_key in PRODUCT_SETTINGS_MAPPING.items():
-        value = product_info.get(product_key)
-        if value is not None:
-            config[config_key] = value
 
 
 # ============================================
@@ -411,13 +354,11 @@ def process_batch_task(
                 'error': error_msg
             }
         
-        product_config = config.copy()
-        
-        # Apply product-specific configuration using simplified mapping approach
+        # Apply product-specific configuration using centralized builder
         if source_info.get('product_id'):
-            product_info = get_product(source_info['product_id'])
-            if product_info:
-                apply_product_config(product_config, product_info)
+            product_config = build_product_config(source_info['product_id'], base_config=config)
+        else:
+            product_config = config.copy()
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
