@@ -42,6 +42,7 @@ from utils.database import (
 )
 from utils.google_sheets import load_sheet_data
 from utils.multi_source_pipeline import process_multi_source_pipeline
+from utils.exceptions import TransientError
 
 
 # ============================================
@@ -497,11 +498,6 @@ def get_new_papers_since_last_run(
 # ============================================
 # JOB EXECUTION
 # ============================================
-
-class TransientError(Exception):
-    """Exception for transient errors that should be retried."""
-    pass
-
 
 def run_scheduled_job_with_retry(
     scheduled_job: Dict[str, Any],

@@ -38,6 +38,7 @@ from utils.database import (
     save_parsed_document
 )
 from utils.tagger import generate_tags_with_openai, validate_tags
+from utils.exceptions import TransientError
 
 
 # ============================================
@@ -100,15 +101,6 @@ PRODUCT_SETTINGS_MAPPING = {
     'tagging_prompt_template': 'tagging_prompt_template',
     'tagging_config': 'tagging_config'
 }
-
-
-# ============================================
-# EXCEPTIONS
-# ============================================
-
-class TransientError(Exception):
-    """Exception for transient errors that should be retried (network, timeouts)."""
-    pass
 
 
 # ============================================
