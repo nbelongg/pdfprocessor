@@ -111,6 +111,16 @@ def process_pdf_task(
             lambda: parse_pdf_with_llamaparse(pdf_content, filename, config)
         )
         
+        # Save the expensive parsed text for future re-processing
+        from utils.database import save_parsed_document
+        save_parsed_document(
+            file_id=file_id,
+            filename=filename,
+            parsed_text=parsed_text,
+            parsing_config=config,
+            file_metadata=file_metadata
+        )
+        
         self.update_progress(40, 100, f"Chunking {filename}...")
         
         nodes = chunk_text(parsed_text, config, row_metadata)

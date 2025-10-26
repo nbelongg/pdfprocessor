@@ -159,6 +159,75 @@ def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
     finally:
         conn.close()
 
+def save_parsed_document(file_id: str, filename: str, parsed_text: str, 
+                         parsing_config: Dict = None, file_metadata: Dict = None):
+    """Save raw parsed text from LlamaParse for future re-processing."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO parsed_documents 
+                (file_id, filename, parsed_text, parse_mode, result_type, parsing_config, file_metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (file_id) 
+                DO UPDATE SET 
+                    parsed_text = EXCLUDED.parsed_text,
+                    filename = EXCLUDED.filename,
+                    parse_mode = EXCLUDED.parse_mode,
+                    result_type = EXCLUDED.result_type,
+                    parsing_config = EXCLUDED.parsing_config,
+                    file_metadata = EXCLUDED.file_metadata,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    file_id,
+                    filename,
+                    parsed_text,
+                    parsing_config.get('parsing_mode') if parsing_config else None,
+                    parsing_config.get('result_type') if parsing_config else None,
+                    Json(parsing_config) if parsing_config else None,
+                    Json(file_metadata) if file_metadata else None
+                )
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def get_parsed_document(file_id: str) -> Dict:
+    """Retrieve raw parsed text for a file."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM parsed_documents WHERE file_id = %s",
+                (file_id,)
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
+    """Get list of all parsed documents."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT file_id, filename, 
+                       LENGTH(parsed_text) as text_length,
+                       parse_mode, result_type,
+                       created_at, updated_at
+                FROM parsed_documents
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (limit,)
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
 def mark_chunks_uploaded(job_id: str, file_id: str):
     """Mark chunks as uploaded to Pinecone."""
     conn = get_db_connection()

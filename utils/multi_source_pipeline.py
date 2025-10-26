@@ -234,6 +234,16 @@ def process_multi_source_pipeline(
                     product_config
                 )
                 
+                # Save the expensive parsed text for future re-processing
+                from utils.database import save_parsed_document
+                save_parsed_document(
+                    file_id=file_id,
+                    filename=file_metadata.get('name', f'file_{file_id}.pdf'),
+                    parsed_text=parsed_text,
+                    parsing_config=product_config,
+                    file_metadata=file_metadata
+                )
+                
                 row_metadata = {
                     'file_id': file_id,
                     'filename': file_metadata.get('name', ''),
