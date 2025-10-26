@@ -9,26 +9,30 @@ This test suite provides comprehensive coverage for the PDF processing pipeline 
 ```
 tests/
 ├── conftest.py           # Shared fixtures and test utilities
-├── unit/                 # Unit tests (no external dependencies)
-│   ├── test_config_models.py      # Configuration models (25 tests)
-│   ├── test_chunker.py             # Text chunking (9 tests)
-│   ├── test_deduplication.py       # Deduplication logic (15 tests)
-│   └── test_config_builder.py      # Config building (12 tests)
-└── integration/          # Integration tests (require database)
-    ├── test_database.py            # Database operations
-    └── test_pipeline.py            # End-to-end pipeline
+└── unit/                 # Unit tests (no external dependencies)
+    ├── test_config_models.py      # Configuration models (25 tests)
+    ├── test_chunker.py             # Text chunking (9 tests)
+    ├── test_deduplication.py       # Deduplication logic (15 tests)
+    └── test_config_builder.py      # Config building (12 tests)
 ```
+
+## Future Enhancements
+
+### Integration Tests
+Integration tests for database operations and full pipeline flow are planned for future implementation. These will require:
+- Configured PostgreSQL test database
+- Transaction rollback support for test isolation
+- Mocked external services (Google Drive, Sheets, Pinecone)
+- CI/CD pipeline with database containers
 
 ## Running Tests
 
-### Default (Unit Tests Only)
+### Run All Tests
 ```bash
 pytest
-# Or explicitly:
-pytest tests/unit/ -v
+# Or with verbose output:
+pytest -v
 ```
-
-**Note**: By default, pytest is configured to run only unit tests (tests/unit/). This ensures fast, reliable CI/CD without external dependencies.
 
 ### Specific Test File
 ```bash
@@ -44,16 +48,6 @@ pytest --cov=utils --cov=config --cov-report=html
 ```bash
 pytest -m "unit and not slow" -v
 ```
-
-### Integration Tests (Requires Database - Not Run by Default)
-```bash
-pytest tests/integration/ -v
-```
-
-**Important**: Integration tests are NOT run by default. They require:
-- A configured PostgreSQL database with `DATABASE_URL` environment variable
-- External service access (Google Drive, Sheets, etc.)
-- They are kept for future use but skipped in standard test runs
 
 ## Test Coverage Summary
 
@@ -91,19 +85,6 @@ pytest tests/integration/ -v
 
 ### Integration Tests (⚠️ Requires Database)
 
-#### Database Operations
-- Product CRUD operations
-- Data source management
-- Document storage
-- Job tracking
-- Transaction behavior
-
-#### Pipeline Flow
-- Chunking + Embedding
-- Parsing + Chunking
-- End-to-end processing
-- Configuration flow
-- Error handling
 
 ## Fixtures
 
