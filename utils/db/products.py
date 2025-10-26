@@ -14,21 +14,9 @@ from psycopg2.extras import Json
 
 from utils.exceptions import DatabaseError, DatabaseTransientError
 from utils.db_utils import get_db_transaction, with_db_error_handling
+from utils.db.connection import _row_to_dict
 
 logger = logging.getLogger(__name__)
-
-
-def _row_to_dict(row) -> Optional[Dict[str, Any]]:
-    """
-    Safely convert RealDictRow to standard Python dict.
-    
-    Args:
-        row: RealDictRow from database query or None
-        
-    Returns:
-        Dict if row exists, None otherwise
-    """
-    return dict(row) if row else None
 
 
 @with_db_error_handling
