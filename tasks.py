@@ -1,14 +1,27 @@
 """
 Celery tasks for PDF processing pipeline.
+
+This module defines background tasks for processing PDFs through the complete pipeline:
+download → parse → tag → chunk → embed → upload to Pinecone.
+
+Improvements (October 2025):
+- Replaced print() with proper logging
+- Extracted constants section
+- Simplified config builder with PRODUCT_CONFIG_MAPPING
+- Improved type hints throughout
+- Added TransientError exception class
+- Moved all imports to top of file
 """
 
-from celery import Task
-from celeryconfig import celery_app
-import pandas as pd
-from typing import Dict, List, Optional
-import uuid
+import logging
 import time
 import traceback
+import uuid
+from typing import Dict, List, Optional, Callable, Tuple, Any
+
+import pandas as pd
+from celery import Task
+from celeryconfig import celery_app
 
 from utils.google_sheets import extract_file_id_from_drive_link, load_sheet_data
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
@@ -21,16 +34,99 @@ from utils.database import (
     save_chunks, mark_chunks_uploaded,
     get_data_source, get_column_mapping_dict,
     get_product, get_product_api_keys,
-    update_document_tags, get_document_tags, is_document_tagged
+    update_document_tags, get_document_tags, is_document_tagged,
+    save_parsed_document
 )
 from utils.tagger import generate_tags_with_openai, validate_tags
 
 
+# ============================================
+# LOGGING SETUP
+# ============================================
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# CONSTANTS
+# ============================================
+
+# Retry settings
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BACKOFF_FACTOR = 2
+
+# Celery task retry settings
+CELERY_RETRY_COUNTDOWN = 60  # seconds
+CELERY_MAX_RETRIES = 3
+
+# Processing settings
+EMBEDDING_PREVIEW_SIZE = 5
+
+# Progress milestones (percentage)
+PROGRESS_DOWNLOAD = 0
+PROGRESS_PARSE = 20
+PROGRESS_TAG = 30
+PROGRESS_CHUNK = 40
+PROGRESS_EMBED = 60
+PROGRESS_UPLOAD = 80
+PROGRESS_COMPLETE = 100
+
+# Product config mapping (reduces duplication)
+PRODUCT_CONFIG_MAPPING = {
+    'llama_api_key': 'LLAMA_CLOUD_API_KEY',
+    'openai_api_key': 'OPENAI_API_KEY',
+    'pinecone_api_key': 'PINECONE_API_KEY',
+    'google_credentials': 'GOOGLE_CREDENTIALS'
+}
+
+# Product settings mapping
+PRODUCT_SETTINGS_MAPPING = {
+    'index_name': 'pinecone_index',
+    'pinecone_environment': 'pinecone_environment',
+    'default_namespace': 'default_namespace',
+    'parsing_mode': 'parsing_mode',
+    'result_type': 'result_type',
+    'language': 'language',
+    'use_vendor_multimodal': 'use_vendor_multimodal',
+    'page_separator': 'page_separator',
+    'chunking_strategy': 'default_chunking_strategy',
+    'chunk_size': 'default_chunk_size',
+    'chunk_overlap': 'chunk_overlap',
+    'semantic_buffer_size': 'semantic_buffer_size',
+    'embedding_model': 'default_embedding_model',
+    'embedding_dimension': 'embedding_dimension',
+    'tagging_enabled': 'tagging_enabled',
+    'tagging_model': 'tagging_model',
+    'tagging_prompt_template': 'tagging_prompt_template',
+    'tagging_config': 'tagging_config'
+}
+
+
+# ============================================
+# EXCEPTIONS
+# ============================================
+
+class TransientError(Exception):
+    """Exception for transient errors that should be retried (network, timeouts)."""
+    pass
+
+
+# ============================================
+# TASK BASE CLASS
+# ============================================
+
 class CallbackTask(Task):
     """Base task class that handles progress callbacks."""
     
-    def update_progress(self, current, total, message):
-        """Update task progress."""
+    def update_progress(self, current: int, total: int, message: str) -> None:
+        """
+        Update task progress.
+        
+        Args:
+            current: Current progress value
+            total: Total progress value
+            message: Progress message to display
+        """
         self.update_state(
             state='PROGRESS',
             meta={
@@ -42,7 +138,16 @@ class CallbackTask(Task):
         )
 
 
-def call_with_retry(func, max_retries=3, backoff_factor=2, exceptions=(Exception,)):
+# ============================================
+# UTILITIES
+# ============================================
+
+def call_with_retry(
+    func: Callable[[], Any],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    backoff_factor: int = DEFAULT_BACKOFF_FACTOR,
+    exceptions: Tuple[type, ...] = (Exception,)
+) -> Any:
     """
     Call a function with exponential backoff retry logic.
     
@@ -66,22 +171,58 @@ def call_with_retry(func, max_retries=3, backoff_factor=2, exceptions=(Exception
                 raise
             
             wait_time = backoff_factor ** attempt
-            print(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s...")
+            logger.warning(
+                f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
+            )
             time.sleep(wait_time)
     
     raise RuntimeError("Max retries exceeded")
 
+
+def apply_product_config(config: Dict[str, Any], product_info: Dict[str, Any]) -> None:
+    """
+    Apply product-specific configuration in place.
+    
+    Simplifies config building by using mapping dictionaries instead of
+    repetitive if-statements.
+    
+    Args:
+        config: Configuration dictionary to update
+        product_info: Product information from database
+    """
+    if not product_info or not product_info['active']:
+        return
+    
+    logger.info(f"Applying product-specific settings: {product_info['name']}")
+    
+    # Apply API keys using mapping dict
+    product_api_keys = get_product_api_keys(product_info['id'])
+    for config_key, api_key in PRODUCT_CONFIG_MAPPING.items():
+        if product_api_keys.get(api_key):
+            config[config_key] = product_api_keys[api_key]
+            logger.debug(f"  - Applied {api_key}")
+    
+    # Apply product settings using mapping dict
+    for config_key, product_key in PRODUCT_SETTINGS_MAPPING.items():
+        value = product_info.get(product_key)
+        if value is not None:
+            config[config_key] = value
+
+
+# ============================================
+# TASKS
+# ============================================
 
 @celery_app.task(bind=True, base=CallbackTask, name='tasks.process_pdf_task')
 def process_pdf_task(
     self,
     file_id: str,
     filename: str,
-    row_metadata: Dict,
-    config: Dict,
+    row_metadata: Dict[str, Any],
+    config: Dict[str, Any],
     job_id: str,
     namespace: str = 'default'
-) -> Dict:
+) -> Dict[str, Any]:
     """
     Process a single PDF: download, parse, chunk, embed, and upload to Pinecone.
     
@@ -97,7 +238,7 @@ def process_pdf_task(
         Dictionary with processing results
     """
     try:
-        self.update_progress(0, 100, f"Downloading {filename}...")
+        self.update_progress(PROGRESS_DOWNLOAD, 100, f"Downloading {filename}...")
         
         pdf_content = call_with_retry(
             lambda: download_pdf_from_drive(file_id, config['google_credentials'])
@@ -107,14 +248,13 @@ def process_pdf_task(
             lambda: get_file_metadata(file_id, config['google_credentials'])
         )
         
-        self.update_progress(20, 100, f"Parsing {filename} with LlamaParse...")
+        self.update_progress(PROGRESS_PARSE, 100, f"Parsing {filename} with LlamaParse...")
         
         parsed_text = call_with_retry(
             lambda: parse_pdf_with_llamaparse(pdf_content, filename, config)
         )
         
         # Save the expensive parsed text for future re-processing
-        from utils.database import save_parsed_document
         save_parsed_document(
             file_id=file_id,
             filename=filename,
@@ -126,7 +266,7 @@ def process_pdf_task(
         # Generate AI tags if enabled in product configuration
         tagging_enabled = config.get('tagging_enabled', False)
         if tagging_enabled:
-            self.update_progress(30, 100, f"Generating AI tags for {filename}...")
+            self.update_progress(PROGRESS_TAG, 100, f"Generating AI tags for {filename}...")
             
             try:
                 # Check if already tagged
@@ -151,11 +291,15 @@ def process_pdf_task(
                     validated_tags = validate_tags(tags)
                     update_document_tags(file_id, validated_tags, tagging_model)
                     
-                    print(f"Generated {len(validated_tags)} tags for {filename}: {validated_tags}")
+                    logger.info(
+                        f"Generated {len(validated_tags)} tags for {filename}: {validated_tags}"
+                    )
                 else:
                     # Load existing tags
                     validated_tags = get_document_tags(file_id)
-                    print(f"Using existing {len(validated_tags)} tags for {filename}")
+                    logger.info(
+                        f"Using existing {len(validated_tags)} tags for {filename}"
+                    )
                     
                 # Add tags to row_metadata so they get propagated to chunks
                 row_metadata['tags'] = validated_tags
@@ -163,21 +307,26 @@ def process_pdf_task(
                 
             except Exception as e:
                 # Don't fail the entire pipeline if tagging fails
-                print(f"Warning: Tagging failed for {filename}: {str(e)}")
-                print(traceback.format_exc())
+                logger.warning(
+                    f"Tagging failed for {filename}: {str(e)}\n{traceback.format_exc()}"
+                )
                 row_metadata['tags'] = []
         
-        self.update_progress(40, 100, f"Chunking {filename}...")
+        self.update_progress(PROGRESS_CHUNK, 100, f"Chunking {filename}...")
         
         nodes = chunk_text(parsed_text, config, row_metadata)
         
-        self.update_progress(60, 100, f"Creating embeddings for {filename} ({len(nodes)} chunks)...")
+        self.update_progress(
+            PROGRESS_EMBED,
+            100,
+            f"Creating embeddings for {filename} ({len(nodes)} chunks)..."
+        )
         
         embeddings = call_with_retry(
             lambda: create_embeddings(nodes, config)
         )
         
-        self.update_progress(80, 100, f"Uploading {filename} to Pinecone...")
+        self.update_progress(PROGRESS_UPLOAD, 100, f"Uploading {filename} to Pinecone...")
         
         pinecone_index = initialize_pinecone(config)
         
@@ -199,13 +348,13 @@ def process_pdf_task(
                 'chunk_id': str(uuid.uuid4()),
                 'text': node.get_content(),
                 'metadata': node.metadata,
-                'embedding_preview': embedding[:5]
+                'embedding_preview': embedding[:EMBEDDING_PREVIEW_SIZE]
             })
         
         save_chunks(job_id, file_id, filename, chunks_data)
         mark_chunks_uploaded(job_id, file_id)
         
-        self.update_progress(100, 100, f"Completed {filename}")
+        self.update_progress(PROGRESS_COMPLETE, 100, f"Completed {filename}")
         
         return {
             'status': 'success',
@@ -217,11 +366,10 @@ def process_pdf_task(
         
     except Exception as e:
         error_msg = f"Error processing {filename}: {str(e)}"
-        print(error_msg)
-        print(traceback.format_exc())
+        logger.error(f"{error_msg}\n{traceback.format_exc()}")
         
         try:
-            raise self.retry(exc=e, countdown=60, max_retries=3)
+            raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
         except self.MaxRetriesExceededError:
             return {
                 'status': 'error',
@@ -236,9 +384,9 @@ def process_batch_task(
     self,
     source_id: int,
     selected_indices: List[int],
-    config: Dict,
+    config: Dict[str, Any],
     preview_mode: bool = False
-) -> Dict:
+) -> Dict[str, Any]:
     """
     Process a batch of PDFs from a data source.
     
@@ -268,40 +416,10 @@ def process_batch_task(
         
         product_config = config.copy()
         
+        # Apply product-specific configuration using simplified mapping approach
         if source_info.get('product_id'):
             product_info = get_product(source_info['product_id'])
-            if product_info and product_info['active']:
-                product_api_keys = get_product_api_keys(source_info['product_id'])
-                
-                if product_api_keys.get('LLAMA_CLOUD_API_KEY'):
-                    product_config['llama_api_key'] = product_api_keys['LLAMA_CLOUD_API_KEY']
-                if product_api_keys.get('OPENAI_API_KEY'):
-                    product_config['openai_api_key'] = product_api_keys['OPENAI_API_KEY']
-                if product_api_keys.get('PINECONE_API_KEY'):
-                    product_config['pinecone_api_key'] = product_api_keys['PINECONE_API_KEY']
-                if product_api_keys.get('GOOGLE_CREDENTIALS'):
-                    product_config['google_credentials'] = product_api_keys['GOOGLE_CREDENTIALS']
-                
-                product_config['index_name'] = product_info['pinecone_index']
-                product_config['pinecone_environment'] = product_info.get('pinecone_environment', 'us-east-1')
-                product_config['default_namespace'] = product_info.get('default_namespace', 'default')
-                product_config['parsing_mode'] = product_info.get('parsing_mode', 'auto')
-                product_config['result_type'] = product_info.get('result_type', 'markdown')
-                product_config['language'] = product_info.get('language', 'en')
-                product_config['use_vendor_multimodal'] = product_info.get('use_vendor_multimodal', True)
-                product_config['page_separator'] = product_info.get('page_separator', '\n---\n')
-                product_config['chunking_strategy'] = product_info.get('default_chunking_strategy', 'Token-based')
-                product_config['chunk_size'] = product_info.get('default_chunk_size', 512)
-                product_config['chunk_overlap'] = product_info.get('chunk_overlap', 50)
-                product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
-                product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
-                product_config['embedding_dimension'] = product_info.get('embedding_dimension')
-                
-                # Add tagging configuration
-                product_config['tagging_enabled'] = product_info.get('tagging_enabled', False)
-                product_config['tagging_model'] = product_info.get('tagging_model', 'gpt-4o-mini')
-                product_config['tagging_prompt_template'] = product_info.get('tagging_prompt_template')
-                product_config['tagging_config'] = product_info.get('tagging_config', {})
+            apply_product_config(product_config, product_info)
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
@@ -392,14 +510,13 @@ def process_batch_task(
         
     except Exception as e:
         error_msg = f"Error in batch processing: {str(e)}"
-        print(error_msg)
-        print(traceback.format_exc())
+        logger.error(f"{error_msg}\n{traceback.format_exc()}")
         
         if not preview_mode:
             update_job_status(job_id, 'error')
         
         try:
-            raise self.retry(exc=e, countdown=60, max_retries=3)
+            raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
         except self.MaxRetriesExceededError:
             return {
                 'status': 'error',
