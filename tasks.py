@@ -138,7 +138,7 @@ def call_with_retry(
     func: Callable[[], Any],
     max_retries: int = DEFAULT_MAX_RETRIES,
     backoff_factor: int = DEFAULT_BACKOFF_FACTOR,
-    exceptions: Tuple[type, ...] = (Exception,)
+    exceptions: tuple[type[Exception], ...] = (Exception,)
 ) -> Any:
     """
     Call a function with exponential backoff retry logic.
@@ -401,9 +401,14 @@ def process_batch_task(
         source_info = get_data_source(source_id)
         
         if not source_info:
+            error_msg = f'Data source {source_id} not found'
+            logger.error(error_msg)
+            if not preview_mode:
+                update_job_status(job_id, 'error', error_message=error_msg)
             return {
                 'status': 'error',
-                'error': f'Data source {source_id} not found'
+                'job_id': job_id,
+                'error': error_msg
             }
         
         product_config = config.copy()
@@ -501,18 +506,27 @@ def process_batch_task(
         
         return results
         
+    except TransientError as e:
+        # Transient errors should be retried (network, timeouts, rate limits)
+        error_msg = f"Transient error in batch processing: {str(e)}"
+        logger.warning(f"{error_msg} - will retry")
+        
+        if not preview_mode:
+            update_job_status(job_id, 'running', error_message=f"Retrying after: {str(e)}")
+        
+        raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
+        
     except Exception as e:
+        # Permanent errors should fail immediately
         error_msg = f"Error in batch processing: {str(e)}"
         logger.error(f"{error_msg}\n{traceback.format_exc()}")
         
         if not preview_mode:
-            update_job_status(job_id, 'error')
+            update_job_status(job_id, 'error', error_message=str(e))
         
-        try:
-            raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
-        except self.MaxRetriesExceededError:
-            return {
-                'status': 'error',
-                'job_id': job_id,
-                'error': f"Max retries exceeded: {str(e)}"
-            }
+        return {
+            'status': 'error',
+            'job_id': job_id,
+            'error': error_msg,
+            'traceback': traceback.format_exc()
+        }

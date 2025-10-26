@@ -1,4 +1,4 @@
-from llama_index.core.schema import TextNode
+from llama_index.core.schema import TextNode, BaseNode
 from typing import List, Dict
 import os
 
@@ -9,7 +9,7 @@ os.environ['TRANSFORMERS_CACHE'] = '/tmp/.huggingface/transformers'
 os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/tmp/.huggingface/sentence-transformers'
 
 
-def create_embeddings(nodes: List[TextNode], config: Dict) -> List[List[float]]:
+def create_embeddings(nodes: List[BaseNode], config: Dict) -> List[List[float]]:
     """
     Create embeddings for text nodes.
     
