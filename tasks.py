@@ -419,7 +419,8 @@ def process_batch_task(
         # Apply product-specific configuration using simplified mapping approach
         if source_info.get('product_id'):
             product_info = get_product(source_info['product_id'])
-            apply_product_config(product_config, product_info)
+            if product_info:
+                apply_product_config(product_config, product_info)
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
