@@ -10,6 +10,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+import time
 from components.common import page_header, refresh_button, success_message, error_message
 from utils.db.jobs import (
     get_all_celery_jobs, get_celery_job,
@@ -30,6 +31,12 @@ def render():
     # Initialize session state
     if 'job_auto_refresh' not in st.session_state:
         st.session_state.job_auto_refresh = False
+    if 'job_refresh_countdown' not in st.session_state:
+        st.session_state.job_refresh_countdown = 10
+    if 'job_page_monitor' not in st.session_state:
+        st.session_state.job_page_monitor = 1
+    if 'job_page_history' not in st.session_state:
+        st.session_state.job_page_history = 1
     
     # Tabs for different functionality
     tab1, tab2, tab3 = st.tabs([
@@ -57,27 +64,47 @@ def _render_monitor_jobs():
     st.subheader("Real-Time Job Monitoring")
     
     # Controls row
-    col1, col2, col3 = st.columns([2, 2, 6])
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 4])
     
     with col1:
         if st.button("🔄 Refresh Now", use_container_width=True):
+            st.session_state.job_refresh_countdown = 10
             st.rerun()
     
     with col2:
         auto_refresh = st.checkbox("Auto-refresh (10s)", value=st.session_state.job_auto_refresh)
         if auto_refresh != st.session_state.job_auto_refresh:
             st.session_state.job_auto_refresh = auto_refresh
+            st.session_state.job_refresh_countdown = 10
             st.rerun()
     
-    # Auto-refresh logic
-    if st.session_state.job_auto_refresh:
-        import time
-        time.sleep(10)
-        st.rerun()
+    with col3:
+        jobs_per_page = st.selectbox(
+            "Jobs per page:",
+            [10, 25, 50, 100],
+            index=2,
+            key="monitor_jobs_per_page"
+        )
     
-    # Get all jobs
+    # Auto-refresh with countdown timer (non-blocking)
+    countdown_placeholder = st.empty()
+    if st.session_state.job_auto_refresh:
+        with countdown_placeholder.container():
+            st.info(f"⏱️ Auto-refreshing in {st.session_state.job_refresh_countdown} seconds...")
+        
+        # Decrement countdown
+        if st.session_state.job_refresh_countdown > 0:
+            st.session_state.job_refresh_countdown -= 1
+            time.sleep(1)
+            st.rerun()
+        else:
+            # Reset and refresh
+            st.session_state.job_refresh_countdown = 10
+            st.rerun()
+    
+    # Get all jobs with pagination support
     try:
-        all_jobs = get_all_celery_jobs(limit=200)
+        all_jobs = get_all_celery_jobs(limit=1000)  # Fetch more for pagination
     except Exception as e:
         st.error(f"Error loading jobs: {str(e)}")
         return
@@ -114,10 +141,32 @@ def _render_monitor_jobs():
     # Filter jobs
     filtered_jobs = _filter_jobs_by_status(all_jobs, status_filter)
     
-    st.markdown(f"**Showing {len(filtered_jobs)} jobs**")
+    # Pagination
+    total_jobs = len(filtered_jobs)
+    total_pages = (total_jobs + jobs_per_page - 1) // jobs_per_page
+    
+    if total_pages > 1:
+        col1, col2, col3 = st.columns([2, 6, 2])
+        with col1:
+            if st.button("⬅️ Previous", disabled=st.session_state.job_page_monitor <= 1):
+                st.session_state.job_page_monitor -= 1
+                st.rerun()
+        with col2:
+            st.markdown(f"**Page {st.session_state.job_page_monitor} of {total_pages}** (Total: {total_jobs} jobs)")
+        with col3:
+            if st.button("Next ➡️", disabled=st.session_state.job_page_monitor >= total_pages):
+                st.session_state.job_page_monitor += 1
+                st.rerun()
+    else:
+        st.markdown(f"**Showing {total_jobs} jobs**")
+    
+    # Calculate pagination slice
+    start_idx = (st.session_state.job_page_monitor - 1) * jobs_per_page
+    end_idx = min(start_idx + jobs_per_page, total_jobs)
+    page_jobs = filtered_jobs[start_idx:end_idx]
     
     # Display jobs
-    for job in filtered_jobs[:50]:  # Show top 50
+    for job in page_jobs:
         _render_job_card(job)
 
 
@@ -206,9 +255,107 @@ def _render_job_card(job: Dict):
                     except Exception as e:
                         error_message(f"Error cancelling job: {str(e)}")
             
-            if status.lower() in ['failed']:
+            if status.lower() in ['failed', 'cancelled']:
                 if st.button("🔄 Retry", key=f"retry_{task_id}", use_container_width=True):
-                    st.warning("Retry functionality coming soon. Please trigger a new job from 'Trigger Processing' tab.")
+                    _retry_failed_job(job)
+
+
+def _retry_failed_job(job: Dict):
+    """Retry a failed job by re-triggering processing for its source."""
+    try:
+        source_id = job.get('source_id')
+        
+        if not source_id:
+            st.warning("⚠️ Cannot retry: No data source associated with this job. Please trigger a new job manually.")
+            return
+        
+        # Get source info
+        source = get_data_source(source_id)
+        if not source:
+            error_message(f"❌ Data source {source_id} not found. It may have been deleted.")
+            return
+        
+        if not source.get('active'):
+            st.warning(f"⚠️ Data source '{source['name']}' is inactive. Please activate it first.")
+            return
+        
+        # Load Google credentials
+        google_creds_path = os.getenv('GOOGLE_CREDENTIALS_PATH')
+        if not google_creds_path or not os.path.exists(google_creds_path):
+            error_message('Google credentials not configured')
+            return
+        
+        import json
+        with open(google_creds_path, 'r') as f:
+            google_credentials = json.load(f)
+        
+        # Load sheet data
+        sheet_data = load_sheet_data(
+            source['sheet_url'],
+            source['sheet_tab_name'],
+            google_credentials
+        )
+        
+        # Process from last processed row
+        last_processed = source.get('last_processed_row', 0)
+        total_rows = len(sheet_data)
+        
+        if last_processed >= total_rows:
+            st.info("ℹ️ No new papers to process. All rows have been processed.")
+            return
+        
+        # Limit to 50 papers for retry
+        rows_to_process = list(range(last_processed, min(last_processed + 50, total_rows)))
+        
+        # Build configuration
+        config = get_product_config_from_source(source_id)
+        config['google_credentials'] = google_credentials
+        
+        # Prepare for pipeline
+        source_configs = [{
+            'source_id': source_id,
+            'data': sheet_data,
+            'selected_indices': rows_to_process
+        }]
+        
+        # Import and trigger pipeline
+        from utils.multi_source_pipeline import process_multi_source_pipeline
+        import uuid
+        
+        retry_job_id = str(uuid.uuid4())
+        
+        # Create Celery job record
+        from utils.db.jobs import create_celery_job
+        create_celery_job(
+            task_id=retry_job_id,
+            task_name=f"Retry: {source['name']}",
+            source_id=source_id,
+            submitted_by='retry'
+        )
+        
+        # Process synchronously
+        with st.spinner(f"Processing {len(rows_to_process)} papers..."):
+            results = process_multi_source_pipeline(
+                source_configs=source_configs,
+                config=config,
+                progress_callback=None,
+                preview_mode=False
+            )
+        
+        # Update job status
+        from utils.db.jobs import update_celery_job_status
+        update_celery_job_status(
+            retry_job_id,
+            'completed',
+            result=results
+        )
+        
+        success_message(f"✅ Retry successful! Processed {results.get('total_pdfs', 0)} papers.")
+        st.rerun()
+        
+    except Exception as e:
+        error_message(f"❌ Error retrying job: {str(e)}")
+        st.exception(e)
 
 
 # ============================================
@@ -449,7 +596,7 @@ def _render_job_history():
     st.subheader("Job History & Re-Processing")
     
     # Filters
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         status_filter_hist = st.selectbox(
@@ -459,10 +606,19 @@ def _render_job_history():
         )
     
     with col2:
-        limit = st.number_input("Show last N jobs:", min_value=10, max_value=500, value=50)
+        limit = st.number_input("Total jobs to load:", min_value=10, max_value=2000, value=100)
     
     with col3:
+        jobs_per_page_hist = st.selectbox(
+            "Jobs per page:",
+            [10, 25, 50, 100],
+            index=1,
+            key="history_jobs_per_page"
+        )
+    
+    with col4:
         if st.button("🔄 Refresh History"):
+            st.session_state.job_page_history = 1
             st.rerun()
     
     # Get jobs
@@ -479,12 +635,35 @@ def _render_job_history():
         st.info("No job history found.")
         return
     
-    st.markdown(f"**Showing {len(jobs)} jobs**")
+    # Pagination for history
+    total_jobs = len(jobs)
+    total_pages = (total_jobs + jobs_per_page_hist - 1) // jobs_per_page_hist
+    
+    if total_pages > 1:
+        col1, col2, col3 = st.columns([2, 6, 2])
+        with col1:
+            if st.button("⬅️ Prev", disabled=st.session_state.job_page_history <= 1, key="hist_prev"):
+                st.session_state.job_page_history -= 1
+                st.rerun()
+        with col2:
+            st.markdown(f"**Page {st.session_state.job_page_history} of {total_pages}** (Total: {total_jobs} jobs)")
+        with col3:
+            if st.button("Next ➡️", disabled=st.session_state.job_page_history >= total_pages, key="hist_next"):
+                st.session_state.job_page_history += 1
+                st.rerun()
+    else:
+        st.markdown(f"**Showing {total_jobs} jobs**")
+    
     st.markdown("---")
+    
+    # Calculate pagination slice
+    start_idx = (st.session_state.job_page_history - 1) * jobs_per_page_hist
+    end_idx = min(start_idx + jobs_per_page_hist, total_jobs)
+    page_jobs = jobs[start_idx:end_idx]
     
     # Display jobs as table
     job_data = []
-    for job in jobs:
+    for job in page_jobs:
         job_data.append({
             'Task ID': job.get('task_id', '')[:12] + '...',
             'Task Name': job.get('task_name', ''),
@@ -502,12 +681,12 @@ def _render_job_history():
     st.markdown("---")
     st.markdown("### Job Details")
     
-    job_ids = [j.get('task_id', '') for j in jobs]
-    job_labels = [f"{j.get('task_name', 'Unknown')} - {j.get('task_id', '')[:12]}..." for j in jobs]
+    job_ids = [j.get('task_id', '') for j in page_jobs]
+    job_labels = [f"{j.get('task_name', 'Unknown')} - {j.get('task_id', '')[:12]}..." for j in page_jobs]
     
     selected_job_label = st.selectbox("Select job for details:", job_labels)
     selected_job_idx = job_labels.index(selected_job_label)
-    selected_job = jobs[selected_job_idx]
+    selected_job = page_jobs[selected_job_idx]
     
     # Display selected job details
     _render_job_details(selected_job)
@@ -557,3 +736,9 @@ def _render_job_details(job: Dict):
     if job.get('result'):
         st.markdown("#### Result")
         st.json(job['result'])
+    
+    # Retry button for failed/cancelled jobs
+    if job.get('status', '').lower() in ['failed', 'cancelled']:
+        st.markdown("---")
+        if st.button("🔄 Retry This Job", key=f"retry_detail_{job.get('task_id')}", type="primary"):
+            _retry_failed_job(job)
