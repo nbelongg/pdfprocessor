@@ -1,0 +1,483 @@
+## Code Quality Rating: **7/10**
+
+This is **solid configuration code** with good Celery practices, but lacks production hardening around logging, error handling, and documentation.
+
+---
+
+## Current Strengths ✅
+
+### 1. **Good Celery Practices**
+```python
+task_acks_late=True                    # ✅ Prevents message loss
+worker_prefetch_multiplier=1           # ✅ Good for long tasks
+task_time_limit=1800                   # ✅ Prevents hung tasks
+worker_max_tasks_per_child=50          # ✅ Memory leak prevention
+```
+
+### 2. **Flexible Redis Connection**
+- Handles both Upstash (TLS) and local Redis
+- Parses multiple URL formats
+- Environment variable driven
+
+### 3. **Task Routing Setup**
+```python
+task_routes = {...}                    # ✅ Separate queues
+task_queues = (...)                    # ✅ Organized routing
+```
+
+### 4. **Sensible Defaults**
+- Result expiration (24 hours)
+- Retry configuration
+- JSON serialization
+
+---
+
+## Critical Issues ❌
+
+### 1. **No Logging** (Biggest Issue)
+```python
+def get_redis_url():
+    # ... complex parsing logic
+    # No logging of what URL was constructed
+    # No logging if parsing fails
+    return connection_url  # Silent failure possible
+```
+
+### 2. **No Error Handling**
+```python
+match = re.search(r'redis(?:s)?://...', redis_host_raw)
+if match:
+    redis_password = match.group(1)  # Could raise IndexError
+    # No error handling if regex fails
+```
+
+### 3. **Magic Numbers/Strings**
+```python
+task_time_limit=1800                   # Why 1800? What's the reasoning?
+worker_max_tasks_per_child=50          # Why 50?
+result_expires=86400                   # Magic number for 24 hours
+'?ssl_cert_reqs=required'             # Hardcoded SSL params
+```
+
+### 4. **No Validation**
+```python
+redis_port = os.getenv('REDIS_PORT', '6379')  # Not validated as integer
+# Could be 'abc' and only fail later
+```
+
+### 5. **Complex Regex Without Explanation**
+```python
+match = re.search(r'redis(?:s)?://(?:default:)?([^@]+)@([^:]+):(\d+)', redis_host_raw)
+# What formats does this match? What about edge cases?
+```
+
+---
+
+## Recommendations to Reach 9/10 🚀
+
+### Priority 1: Add Logging (Critical)
+
+```python
+"""
+Celery configuration for background task processing.
+"""
+import os
+import logging
+from celery import Celery
+from kombu import Queue
+
+# ============================================
+# LOGGING SETUP
+# ============================================
+
+logger = logging.getLogger(__name__)
+
+
+def get_redis_url():
+    """
+    Get Redis connection URL from environment variables.
+    
+    Supports:
+    - Upstash Redis (TLS): rediss://default:password@host:port
+    - Local Redis: redis://host:port
+    - Redis with password: redis://default:password@host:port
+    
+    Returns:
+        str: Fully qualified Redis connection URL
+    """
+    import re
+    
+    redis_host_raw = os.getenv('REDIS_HOST', 'localhost')
+    redis_port = os.getenv('REDIS_PORT', '6379')
+    redis_password = os.getenv('REDIS_PASSWORD', '')
+    redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
+    
+    logger.info(f"Configuring Redis connection (TLS: {redis_use_tls})")
+    
+    # Parse if REDIS_HOST contains a full connection string
+    if 'redis://' in redis_host_raw or 'rediss://' in redis_host_raw:
+        logger.debug(f"Parsing Redis connection string from REDIS_HOST")
+        
+        # Pattern matches: redis[s]://[default:]password@host:port
+        match = re.search(
+            r'redis(?:s)?://(?:default:)?([^@]+)@([^:]+):(\d+)', 
+            redis_host_raw
+        )
+        
+        if match:
+            redis_password = match.group(1)
+            redis_host = match.group(2)
+            redis_port = match.group(3)
+            
+            if 'rediss://' in redis_host_raw:
+                redis_use_tls = True
+            
+            logger.info(f"Parsed Redis connection: {redis_host}:{redis_port} (TLS: {redis_use_tls})")
+        else:
+            logger.warning(f"Failed to parse Redis connection string, falling back to localhost")
+            redis_host = 'localhost'
+    else:
+        redis_host = redis_host_raw
+        logger.info(f"Using Redis host: {redis_host}:{redis_port}")
+    
+    # Build connection URL
+    if redis_use_tls and redis_password:
+        connection_url = f"rediss://default:{redis_password}@{redis_host}:{redis_port}?ssl_cert_reqs=required"
+        logger.info(f"Using TLS Redis connection to {redis_host}:{redis_port}")
+    elif redis_password:
+        connection_url = f"redis://default:{redis_password}@{redis_host}:{redis_port}/0"
+        logger.info(f"Using authenticated Redis connection to {redis_host}:{redis_port}")
+    else:
+        connection_url = f"redis://{redis_host}:{redis_port}/0"
+        logger.info(f"Using unauthenticated Redis connection to {redis_host}:{redis_port}")
+    
+    return connection_url
+```
+
+### Priority 2: Add Constants and Error Handling
+
+```python
+# ============================================
+# CONSTANTS
+# ============================================
+
+# Task time limits (seconds)
+TASK_HARD_TIME_LIMIT = 1800  # 30 minutes
+TASK_SOFT_TIME_LIMIT = 1500  # 25 minutes (warning before hard kill)
+
+# Worker settings
+WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after 50 tasks (prevents memory leaks)
+WORKER_PREFETCH_MULTIPLIER = 1   # Only take 1 task at a time (good for long-running tasks)
+
+# Retry settings
+TASK_DEFAULT_RETRY_DELAY = 60   # Wait 60 seconds before retry
+TASK_MAX_RETRIES = 3             # Maximum 3 retry attempts
+
+# Result settings
+RESULT_EXPIRES = 86400  # 24 hours in seconds
+
+# SSL parameters
+SSL_CERT_REQS = 'required'
+
+# Default Redis settings
+DEFAULT_REDIS_HOST = 'localhost'
+DEFAULT_REDIS_PORT = '6379'
+
+
+# ============================================
+# EXCEPTIONS
+# ============================================
+
+class RedisConfigurationError(Exception):
+    """Raised when Redis configuration is invalid."""
+    pass
+
+
+# ============================================
+# REDIS URL BUILDER
+# ============================================
+
+def get_redis_url():
+    """Get Redis connection URL from environment variables."""
+    import re
+    
+    redis_host_raw = os.getenv('REDIS_HOST', DEFAULT_REDIS_HOST)
+    redis_port = os.getenv('REDIS_PORT', DEFAULT_REDIS_PORT)
+    redis_password = os.getenv('REDIS_PASSWORD', '')
+    redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
+    
+    logger.info("Building Redis connection URL")
+    
+    try:
+        # Validate port is numeric
+        redis_port_int = int(redis_port)
+        if not (1 <= redis_port_int <= 65535):
+            raise RedisConfigurationError(f"Invalid Redis port: {redis_port}")
+    except ValueError:
+        raise RedisConfigurationError(f"Redis port must be numeric, got: {redis_port}")
+    
+    # Parse full connection string if provided
+    if 'redis://' in redis_host_raw or 'rediss://' in redis_host_raw:
+        logger.debug("Parsing Redis connection string from REDIS_HOST")
+        
+        try:
+            match = re.search(
+                r'redis(?:s)?://(?:default:)?([^@]+)@([^:]+):(\d+)',
+                redis_host_raw
+            )
+            
+            if match:
+                redis_password = match.group(1)
+                redis_host = match.group(2)
+                redis_port = match.group(3)
+                
+                if 'rediss://' in redis_host_raw:
+                    redis_use_tls = True
+                
+                logger.info(f"Parsed connection: {redis_host}:{redis_port} (TLS: {redis_use_tls})")
+            else:
+                logger.warning("Failed to parse connection string, using defaults")
+                redis_host = DEFAULT_REDIS_HOST
+                
+        except Exception as e:
+            logger.error(f"Error parsing Redis connection string: {e}")
+            raise RedisConfigurationError(f"Invalid Redis connection string: {redis_host_raw}")
+    else:
+        redis_host = redis_host_raw
+        logger.info(f"Using Redis: {redis_host}:{redis_port}")
+    
+    # Build connection URL
+    if redis_use_tls and redis_password:
+        connection_url = (
+            f"rediss://default:{redis_password}@{redis_host}:{redis_port}"
+            f"?ssl_cert_reqs={SSL_CERT_REQS}"
+        )
+        logger.info(f"Built TLS connection URL for {redis_host}:{redis_port}")
+    elif redis_password:
+        connection_url = f"redis://default:{redis_password}@{redis_host}:{redis_port}/0"
+        logger.info(f"Built authenticated connection URL for {redis_host}:{redis_port}")
+    else:
+        connection_url = f"redis://{redis_host}:{redis_port}/0"
+        logger.info(f"Built connection URL for {redis_host}:{redis_port}")
+    
+    return connection_url
+```
+
+### Priority 3: Update Celery Config with Constants
+
+```python
+# ============================================
+# CELERY INITIALIZATION
+# ============================================
+
+try:
+    redis_url = get_redis_url()
+except RedisConfigurationError as e:
+    logger.error(f"Failed to configure Redis: {e}")
+    raise
+
+celery_app = Celery(
+    'pdf_processor',
+    broker=redis_url,
+    backend=redis_url,
+    include=['tasks']
+)
+
+# ============================================
+# CELERY CONFIGURATION
+# ============================================
+
+celery_app.conf.update(
+    # Serialization
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    
+    # Timezone
+    timezone='UTC',
+    enable_utc=True,
+    
+    # Broker settings
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=10,
+    
+    # Task acknowledgment (prevents message loss on worker crash)
+    task_acks_late=True,
+    
+    # Worker settings
+    worker_prefetch_multiplier=WORKER_PREFETCH_MULTIPLIER,  # Only fetch 1 task at a time
+    worker_max_tasks_per_child=WORKER_MAX_TASKS_PER_CHILD,  # Restart after N tasks
+    
+    # Task time limits (prevents hung tasks)
+    task_time_limit=TASK_HARD_TIME_LIMIT,      # Hard kill after 30 min
+    task_soft_time_limit=TASK_SOFT_TIME_LIMIT, # Soft timeout at 25 min
+    
+    # Retry settings
+    task_default_retry_delay=TASK_DEFAULT_RETRY_DELAY,
+    task_max_retries=TASK_MAX_RETRIES,
+    
+    # Task routing (separate queues for different task types)
+    task_routes={
+        'tasks.process_pdf_task': {'queue': 'pdf_processing'},
+        'tasks.process_batch_task': {'queue': 'batch_processing'},
+    },
+    
+    # Queue configuration
+    task_queues=(
+        Queue('pdf_processing', routing_key='pdf.#'),
+        Queue('batch_processing', routing_key='batch.#'),
+    ),
+    
+    # Result backend settings
+    result_expires=RESULT_EXPIRES,  # Results expire after 24 hours
+)
+
+logger.info("Celery app configured successfully")
+```
+
+### Priority 4: Add Environment-Based Config (Optional)
+
+```python
+def get_celery_config():
+    """
+    Get environment-specific Celery configuration.
+    
+    Returns different settings for development vs production.
+    """
+    env = os.getenv('ENVIRONMENT', 'development').lower()
+    
+    if env == 'production':
+        return {
+            'worker_prefetch_multiplier': 1,
+            'worker_max_tasks_per_child': 50,
+            'task_time_limit': 1800,
+            'task_soft_time_limit': 1500,
+            'worker_concurrency': 4,  # Production: 4 workers
+        }
+    else:
+        return {
+            'worker_prefetch_multiplier': 1,
+            'worker_max_tasks_per_child': 10,  # Dev: restart more frequently
+            'task_time_limit': 600,            # Dev: shorter timeouts
+            'task_soft_time_limit': 500,
+            'worker_concurrency': 2,           # Dev: 2 workers
+        }
+
+# Then in celery_app.conf.update():
+env_config = get_celery_config()
+celery_app.conf.update(**env_config)
+```
+
+### Priority 5: Add Health Check (Nice to Have)
+
+```python
+def test_redis_connection():
+    """
+    Test Redis connection on startup.
+    
+    Returns:
+        bool: True if connection successful
+    """
+    try:
+        from redis import Redis
+        redis_url = get_redis_url()
+        
+        # Parse URL to get connection params
+        # (simplified, you might need redis.from_url)
+        logger.info("Testing Redis connection...")
+        
+        # This is a simple ping test
+        # In production, you'd use redis.from_url(redis_url).ping()
+        
+        logger.info("✓ Redis connection successful")
+        return True
+        
+    except Exception as e:
+        logger.error(f"✗ Redis connection failed: {e}")
+        return False
+
+# Call on startup
+if __name__ == '__main__':
+    test_redis_connection()
+    celery_app.start()
+```
+
+---
+
+## Additional Minor Issues
+
+### 1. **Inconsistent Queue Naming**
+```python
+# Lines 75-76: Uses routing keys but they're never used
+Queue('pdf_processing', routing_key='pdf.#'),
+# The routing_key='pdf.#' is not referenced anywhere
+# Either use it or remove it
+```
+
+**Fix:**
+```python
+# If not using routing keys, simplify:
+task_queues=(
+    Queue('pdf_processing'),
+    Queue('batch_processing'),
+)
+```
+
+### 2. **broker_connection_retry Settings Incomplete**
+```python
+# Line 65: Only sets retry_on_startup
+broker_connection_retry_on_startup=True,
+
+# Should add:
+broker_connection_retry=True,
+broker_connection_max_retries=10,
+```
+
+### 3. **Missing Worker Pool Settings**
+```python
+# Add for production:
+worker_pool='prefork',  # or 'gevent' for I/O bound tasks
+worker_concurrency=4,    # Number of worker processes
+```
+
+---
+
+## Summary: Path to 9/10
+
+| Fix | Impact | Effort | Priority |
+|-----|--------|--------|----------|
+| **Add logging** | High | Low | 🔴 Critical |
+| **Add error handling** | High | Low | 🔴 Critical |
+| **Extract constants** | Medium | Low | 🔴 Critical |
+| **Validate inputs** | High | Medium | 🟡 Important |
+| **Add comments** | Medium | Low | 🟡 Important |
+| **Fix broker retry** | Medium | Very Low | 🟡 Important |
+| **Clean up routing** | Low | Very Low | 🟢 Nice |
+| **Env-based config** | Low | Medium | 🟢 Nice |
+| **Health check** | Low | Low | 🟢 Nice |
+
+**Time Estimate:**
+- **Critical fixes only:** 1-2 hours → **8/10**
+- **Critical + Important:** 2-3 hours → **9/10**
+- **All improvements:** 3-4 hours → **9.5/10**
+
+---
+
+## Bottom Line
+
+**Current State:** Functional but lacks production visibility (no logging)
+
+**Strengths:**
+- ✅ Good Celery practices
+- ✅ Flexible Redis setup
+- ✅ Task routing configured
+- ✅ Sensible timeouts
+
+**Main Issues:**
+- ❌ No logging (biggest problem)
+- ❌ No error handling
+- ❌ Magic numbers
+- ❌ No input validation
+
+**After implementing Critical + Important fixes, this would be solid 9/10 production code.** The lack of logging is the primary issue - you'd have no visibility if Redis URL parsing fails or connection issues occur.
