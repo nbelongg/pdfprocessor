@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 -   **Vector Search Testing**: In-app tool to query the Pinecone index and test semantic search.
 -   **Metadata Transformation Rules**: Reusable rules for transforming metadata (map values, combine columns, extract patterns, conditional transforms).
 -   **Multi-Product/Multi-Startup Support**: Management of multiple products/startups with separate Pinecone indexes, API keys (via Replit secrets), and processing settings.
--   **Parsed Text Persistence**: Raw parsed text from LlamaParse is automatically saved to PostgreSQL, enabling future re-chunking and re-embedding without paying for expensive re-parsing.
+-   **Parsed Content Persistence**: Raw parsed content from LlamaParse is automatically saved to PostgreSQL as JSON, enabling future re-chunking and re-embedding without paying for expensive re-parsing.
 
 ### UI/UX Decisions
 -   **Navigation**: Left sidebar with radio buttons for page selection (Configuration, Products, Data Sources, Select Files, Preview Chunks, Process & Upload, Status, History, Search Test)
@@ -68,7 +68,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 -   **Pinecone**: Primary vector storage.
 -   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text storage, and configuration for data sources, column mappings, processing jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products.
-    -   **`parsed_documents` table**: Stores raw parsed text from LlamaParse to enable re-chunking and re-embedding without re-parsing (cost optimization).
+    -   **`parsed_documents` table**: Stores raw parsed content from LlamaParse as JSON to enable re-chunking and re-embedding without re-parsing (cost optimization).
 -   **Session State**: Temporary configuration and processing state.
 
 ## Product Management & Multi-Tenant Support

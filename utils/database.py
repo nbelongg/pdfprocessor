@@ -161,10 +161,21 @@ def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
 
 def save_parsed_document(file_id: str, filename: str, parsed_text: str, 
                          parsing_config: Dict = None, file_metadata: Dict = None):
-    """Save raw parsed text from LlamaParse for future re-processing."""
+    """Save raw parsed text from LlamaParse for future re-processing (as JSON)."""
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
+            # Convert parsed text to JSON structure
+            if isinstance(parsed_text, str):
+                parsed_json = {
+                    'text': parsed_text,
+                    'format': 'text',
+                    'length': len(parsed_text)
+                }
+            else:
+                # If already a dict/object, use as-is
+                parsed_json = parsed_text
+            
             cur.execute(
                 """
                 INSERT INTO parsed_documents 
@@ -183,7 +194,7 @@ def save_parsed_document(file_id: str, filename: str, parsed_text: str,
                 (
                     file_id,
                     filename,
-                    parsed_text,
+                    Json(parsed_json),
                     parsing_config.get('parsing_mode') if parsing_config else None,
                     parsing_config.get('result_type') if parsing_config else None,
                     Json(parsing_config) if parsing_config else None,
@@ -195,7 +206,7 @@ def save_parsed_document(file_id: str, filename: str, parsed_text: str,
         conn.close()
 
 def get_parsed_document(file_id: str) -> Dict:
-    """Retrieve raw parsed text for a file."""
+    """Retrieve raw parsed text for a file (returns JSON)."""
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -207,6 +218,27 @@ def get_parsed_document(file_id: str) -> Dict:
     finally:
         conn.close()
 
+def get_parsed_text_for_rechunking(file_id: str) -> str:
+    """
+    Retrieve the parsed text string for re-chunking/re-embedding.
+    Extracts the 'text' field from the JSON.
+    """
+    doc = get_parsed_document(file_id)
+    if not doc:
+        return None
+    
+    parsed_json = doc.get('parsed_text', {})
+    
+    # If it's stored as JSON with 'text' field
+    if isinstance(parsed_json, dict) and 'text' in parsed_json:
+        return parsed_json['text']
+    # If it's just a string (shouldn't happen with new format, but handle legacy)
+    elif isinstance(parsed_json, str):
+        return parsed_json
+    else:
+        # Try to extract text from any structure
+        return str(parsed_json)
+
 def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
     """Get list of all parsed documents."""
     conn = get_db_connection()
@@ -215,7 +247,11 @@ def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
             cur.execute(
                 """
                 SELECT file_id, filename, 
-                       LENGTH(parsed_text) as text_length,
+                       jsonb_typeof(parsed_text) as json_type,
+                       CASE 
+                           WHEN parsed_text ? 'text' THEN LENGTH(parsed_text->>'text')
+                           ELSE 0
+                       END as text_length,
                        parse_mode, result_type,
                        created_at, updated_at
                 FROM parsed_documents
