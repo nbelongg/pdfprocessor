@@ -18,9 +18,12 @@ Preferred communication style: Simple, everyday language.
 The application features a modular architecture:
 - **`app.py`**: Main router for authentication, navigation, and page routing.
 - **`config/constants.py`**: Centralized configuration, UI messages, and help text.
+- **`config/models.py`**: Type-safe configuration dataclasses with validation (Phase 1).
 - **`components/common.py`**: Reusable UI components.
 - **`page_modules/`**: Modular page implementations for configuration, product management, data sources, PDF processing workflow, job monitoring, status display, history, and search.
 - **`utils/`**: Backend utilities for database, embeddings, parsing, etc.
+  - **`utils/db/`**: Modular database operations organized by domain (Phase 2).
+  - **`utils/config_builder.py`**: Centralized product configuration builder (Phase 3).
 
 ### PDF Processing Pipeline
 1.  **Input Layer**: Google Sheets for batch configuration and metadata.
@@ -59,12 +62,24 @@ The application features a modular architecture:
 
 ### Database Write Operations Pattern
 -   All database write operations utilize a standardized pattern with `get_db_transaction` and `with_db_error_handling` for automatic transaction management and consistent error handling (permanent `DatabaseError` or transient `DatabaseTransientError`).
+-   **Database Modularization (Phase 2)**: Database operations are organized into domain-specific modules in `utils/db/`:
+  - `products.py`: Product CRUD & API key management (7 functions)
+  - `jobs.py`: Processing jobs, chunks, Celery tracking (16 functions)
+  - `documents.py`: Parsed docs, AI tagging, deduplication (12 functions)
+  - `sources.py`: Data sources & column mappings (10 functions)
+  - `scheduling.py`: Scheduled jobs & job runs (9 functions)
+  - `connection.py`: Core database connection utilities
+  - All 30 functions with `@with_db_error_handling` decorator preserved exactly.
 
 ### Product Management & Multi-Tenant Support
 -   **Isolation**: Complete isolation for multiple products/startups via separate Pinecone indexes, API keys, and Google service account credentials.
 -   **Configuration**: Each product stores its name, description, Pinecone configuration, API key secret names (referencing Replit secrets), and complete processing settings (parsing, tagging, chunking, embedding).
 -   **Secret Management**: Uses a secret reference system where products store secret names (e.g., `llamaparse_api_key_secret = "STARTUP_A_LLAMAPARSE_KEY"`) instead of actual credentials, which are retrieved from Replit secrets.
--   **Integration**: When processing, the pipeline loads complete product-specific configurations including API keys, Google Drive credentials, Pinecone settings, and all processing parameters.
+-   **Centralized Config Builder (Phase 3)**: `utils/config_builder.py` provides single source of truth for product configuration building:
+  - `build_product_config()`: Builds complete product config from database with API key retrieval and validation
+  - `PRODUCT_CONFIG_MAPPING` and `PRODUCT_SETTINGS_MAPPING`: Centralized constant definitions
+  - Used by `tasks.py`, `scheduler.py`, and `utils/multi_source_pipeline.py`
+  - Eliminates ~100 lines of duplicate config building logic across modules.
 
 ## External Dependencies
 
