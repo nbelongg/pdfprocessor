@@ -17,10 +17,11 @@ Preferred communication style: Simple, everyday language.
 ### PDF Processing Pipeline
 1.  **Input Layer**: Google Sheets integration for batch configuration and metadata.
 2.  **PDF Acquisition**: Google Drive API for downloading PDFs.
-3.  **Parsing Layer**: LlamaParse for converting PDFs to structured text (markdown/text), with configurable modes and custom instructions.
-4.  **Chunking Layer**: Multiple strategies including token-based (`TokenTextSplitter`), sentence-based (`SentenceSplitter`), and semantic (`SemanticSplitterNodeParser`).
-5.  **Embedding Layer**: OpenAI embeddings only (text-embedding-3-small, text-embedding-3-large). HuggingFace removed for deployment optimization.
-6.  **Storage Layer**: Pinecone vector database (serverless, AWS us-east-1, cosine similarity) for vector storage, with namespace support and batch upsert.
+3.  **Parsing Layer**: LlamaParse for converting PDFs to structured text (markdown/text), with configurable modes and custom instructions. Raw parsed output stored as JSON in PostgreSQL.
+4.  **AI Tagging Layer** (Optional): OpenAI-powered automatic tag generation from parsed content, with product-specific models (gpt-4o, gpt-4o-mini) and customizable prompts. Tags stored in database and propagated to all chunks.
+5.  **Chunking Layer**: Multiple strategies including token-based (`TokenTextSplitter`), sentence-based (`SentenceSplitter`), and semantic (`SemanticSplitterNodeParser`). Tags from tagging layer included in chunk metadata.
+6.  **Embedding Layer**: OpenAI embeddings only (text-embedding-3-small, text-embedding-3-large). HuggingFace removed for deployment optimization.
+7.  **Storage Layer**: Pinecone vector database (serverless, AWS us-east-1, cosine similarity) for vector storage, with namespace support and batch upsert. Tags included in vector metadata.
 
 ### Background Job Queue System (Celery)
 -   **Message Broker**: Redis (Upstash serverless recommended) for task queue and result backend.
@@ -32,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Configuration & Data Flow
 -   Environment variables for API keys and service account JSON for Google Cloud.
--   Data flow: `Google Sheets → Drive Links → PDF Download → LlamaParse → Text → Chunking → Nodes → Embeddings → Pinecone` with metadata attached to vectors.
+-   Data flow: `Google Sheets → Drive Links → PDF Download → LlamaParse → Parsed JSON (stored) → AI Tagging (optional) → Chunking (with tags) → Nodes → Embeddings → Pinecone (with tags in metadata)`
 
 ### Key Features
 -   **Multi-Source Data Management**: Process PDFs from multiple Google Sheet sources, each with unique column mappings and metadata configurations.
@@ -44,6 +45,7 @@ Preferred communication style: Simple, everyday language.
 -   **Metadata Transformation Rules**: Reusable rules for transforming metadata (map values, combine columns, extract patterns, conditional transforms).
 -   **Multi-Product/Multi-Startup Support**: Management of multiple products/startups with separate Pinecone indexes, API keys (via Replit secrets), and processing settings.
 -   **Parsed Content Persistence**: Raw parsed content from LlamaParse is automatically saved to PostgreSQL as JSON, enabling future re-chunking and re-embedding without paying for expensive re-parsing.
+-   **AI-Powered Tagging**: Automatic tag generation using OpenAI LLMs (gpt-4o, gpt-4o-mini, gpt-3.5-turbo) from parsed document content. Product-specific customizable prompt templates with variable substitution ({text}, {filename}, metadata fields). Tags stored in parsed_documents table and propagated to all chunks and vectors for improved searchability.
 
 ### UI/UX Decisions
 -   **Navigation**: Left sidebar with radio buttons for page selection (Configuration, Products, Data Sources, Select Files, Preview Chunks, Process & Upload, Status, History, Search Test)
@@ -68,7 +70,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 -   **Pinecone**: Primary vector storage.
 -   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text storage, and configuration for data sources, column mappings, processing jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products.
-    -   **`parsed_documents` table**: Stores raw parsed content from LlamaParse as JSON to enable re-chunking and re-embedding without re-parsing (cost optimization).
+    -   **`parsed_documents` table**: Stores raw parsed content from LlamaParse as JSON, AI-generated tags, tagging model used, and tagging timestamp. Enables re-chunking and re-embedding without expensive re-parsing or re-tagging.
 -   **Session State**: Temporary configuration and processing state.
 
 ## Product Management & Multi-Tenant Support
@@ -82,11 +84,12 @@ Each product in the database stores:
 - **Pinecone Configuration**: Dedicated index name, environment (serverless region), and default namespace
 - **API Key Secret Names**: References to Replit secrets containing:
   - LlamaParse API key
-  - OpenAI API key (if using OpenAI embeddings)
+  - OpenAI API key (for embeddings and tagging)
   - Pinecone API key
   - Google service account JSON credentials
 - **Complete Processing Settings** (all settings are product-specific):
   - **Parsing Settings**: Mode (auto/fast/premium), result type (markdown/text), language, multimodal support, page separator
+  - **Tagging Settings**: Enable/disable AI tagging, OpenAI model selection (gpt-4o/gpt-4o-mini/gpt-3.5-turbo), customizable prompt template with variable substitution
   - **Chunking Settings**: Strategy (token/sentence/semantic), chunk size, chunk overlap, semantic buffer size
   - **Embedding Settings**: Model (OpenAI text-embedding-3-small/large), custom dimension (optional, defaults to model maximum)
 - **Status**: Active/inactive flag
@@ -115,11 +118,15 @@ When processing PDFs:
    - **Google Drive credentials** from product secret (enables per-product Drive access)
    - **Pinecone configuration**: Index name, environment, default namespace
    - **All parsing settings**: Mode, result type, language, multimodal, page separator
+   - **Tagging settings**: Enable flag, model, custom prompt template
    - **All chunking settings**: Strategy, size, overlap, semantic buffer
    - **Embedding settings**: OpenAI model selection (text-embedding-3-small/large), optional custom dimensions
 3. Product settings take precedence over any global/base configuration
-4. Pipeline functions (PDF download, parsing, chunking, embedding) all use product-specific config
-5. Vectors stored in product-specific Pinecone index with product settings
+4. Pipeline execution flow:
+   - Download PDF → Parse with LlamaParse → Save parsed JSON
+   - If tagging enabled: Generate tags via OpenAI → Save tags → Add to metadata
+   - Chunk text (tags in metadata) → Generate embeddings → Upload to Pinecone (tags in vector metadata)
+5. Vectors stored in product-specific Pinecone index with all metadata including tags
 
 ### Integration with Scheduler
 Scheduled jobs automatically use product settings:

@@ -446,6 +446,41 @@ elif selected_page == "🏢 Products":
                     help="Default namespace for vectors in Pinecone"
                 )
         
+        with st.expander("🏷️ AI Tagging Settings", expanded=False):
+            st.info("💡 Automatically generate relevant tags for each document using OpenAI LLM")
+            
+            tagging_enabled = st.checkbox(
+                "Enable AI Tagging",
+                value=product_to_edit.get('tagging_enabled', False) if product_to_edit else False,
+                help="Generate tags for each parsed document before chunking"
+            )
+            
+            if tagging_enabled:
+                tagging_model = st.selectbox(
+                    "Tagging Model",
+                    ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+                    index=["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"].index(product_to_edit.get('tagging_model', 'gpt-4o-mini')) if (product_to_edit and product_to_edit.get('tagging_model') in ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]) else 0,
+                    help="OpenAI model to use for tag generation (gpt-4o-mini is recommended for cost efficiency)"
+                )
+                
+                from utils.tagger import DEFAULT_TAGGING_PROMPT
+                default_prompt = DEFAULT_TAGGING_PROMPT
+                
+                tagging_prompt = st.text_area(
+                    "Tagging Prompt Template",
+                    value=product_to_edit.get('tagging_prompt_template', '') if product_to_edit else default_prompt,
+                    height=300,
+                    help="Customize the prompt for tag generation. Use {text}, {filename}, and metadata field names as variables."
+                )
+                
+                st.markdown("**Available Variables:**")
+                st.markdown("- `{text}` - Parsed document text (truncated to first 8000 chars)")
+                st.markdown("- `{filename}` - PDF filename")
+                st.markdown("- Any metadata column names from your Google Sheets (e.g., `{paper_title}`, `{authors}`)")
+            else:
+                tagging_model = 'gpt-4o-mini'
+                tagging_prompt = None
+        
         col_save, col_cancel = st.columns(2)
         
         with col_save:
@@ -476,7 +511,10 @@ elif selected_page == "🏢 Products":
                                 page_separator=page_separator,
                                 semantic_buffer_size=semantic_buffer_size,
                                 pinecone_environment=pinecone_environment,
-                                default_namespace=default_namespace
+                                default_namespace=default_namespace,
+                                tagging_enabled=tagging_enabled,
+                                tagging_model=tagging_model,
+                                tagging_prompt_template=tagging_prompt
                             )
                         else:
                             create_product(
@@ -499,7 +537,10 @@ elif selected_page == "🏢 Products":
                                 page_separator=page_separator,
                                 semantic_buffer_size=semantic_buffer_size,
                                 pinecone_environment=pinecone_environment,
-                                default_namespace=default_namespace
+                                default_namespace=default_namespace,
+                                tagging_enabled=tagging_enabled,
+                                tagging_model=tagging_model,
+                                tagging_prompt_template=tagging_prompt
                             )
                         
                         st.success(f"✅ {'Updated' if edit_mode else 'Created'} product: {product_name}")

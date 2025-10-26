@@ -20,8 +20,10 @@ from utils.database import (
     create_processing_job, update_job_status,
     save_chunks, mark_chunks_uploaded,
     get_data_source, get_column_mapping_dict,
-    get_product, get_product_api_keys
+    get_product, get_product_api_keys,
+    update_document_tags, get_document_tags, is_document_tagged
 )
+from utils.tagger import generate_tags_with_openai, validate_tags
 
 
 class CallbackTask(Task):
@@ -120,6 +122,50 @@ def process_pdf_task(
             parsing_config=config,
             file_metadata=file_metadata
         )
+        
+        # Generate AI tags if enabled in product configuration
+        tagging_enabled = config.get('tagging_enabled', False)
+        if tagging_enabled:
+            self.update_progress(30, 100, f"Generating AI tags for {filename}...")
+            
+            try:
+                # Check if already tagged
+                if not is_document_tagged(file_id):
+                    tagging_model = config.get('tagging_model', 'gpt-4o-mini')
+                    prompt_template = config.get('tagging_prompt_template')
+                    openai_api_key = config.get('openai_api_key')
+                    
+                    # Generate tags
+                    tags = call_with_retry(
+                        lambda: generate_tags_with_openai(
+                            text=parsed_text,
+                            filename=filename,
+                            model=tagging_model,
+                            prompt_template=prompt_template,
+                            api_key=openai_api_key,
+                            metadata=row_metadata
+                        )
+                    )
+                    
+                    # Validate and save tags
+                    validated_tags = validate_tags(tags)
+                    update_document_tags(file_id, validated_tags, tagging_model)
+                    
+                    print(f"Generated {len(validated_tags)} tags for {filename}: {validated_tags}")
+                else:
+                    # Load existing tags
+                    validated_tags = get_document_tags(file_id)
+                    print(f"Using existing {len(validated_tags)} tags for {filename}")
+                    
+                # Add tags to row_metadata so they get propagated to chunks
+                row_metadata['tags'] = validated_tags
+                row_metadata['auto_generated_tags'] = True
+                
+            except Exception as e:
+                # Don't fail the entire pipeline if tagging fails
+                print(f"Warning: Tagging failed for {filename}: {str(e)}")
+                print(traceback.format_exc())
+                row_metadata['tags'] = []
         
         self.update_progress(40, 100, f"Chunking {filename}...")
         
@@ -250,6 +296,12 @@ def process_batch_task(
                 product_config['semantic_buffer_size'] = product_info.get('semantic_buffer_size', 1)
                 product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
                 product_config['embedding_dimension'] = product_info.get('embedding_dimension')
+                
+                # Add tagging configuration
+                product_config['tagging_enabled'] = product_info.get('tagging_enabled', False)
+                product_config['tagging_model'] = product_info.get('tagging_model', 'gpt-4o-mini')
+                product_config['tagging_prompt_template'] = product_info.get('tagging_prompt_template')
+                product_config['tagging_config'] = product_info.get('tagging_config', {})
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],

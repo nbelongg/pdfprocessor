@@ -239,6 +239,66 @@ def get_parsed_text_for_rechunking(file_id: str) -> str:
         # Try to extract text from any structure
         return str(parsed_json)
 
+def update_document_tags(file_id: str, tags: List[str], model_used: str):
+    """
+    Update tags for a parsed document.
+    
+    Args:
+        file_id: Google Drive file ID
+        tags: List of tag strings
+        model_used: OpenAI model used for tagging
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE parsed_documents 
+                SET tags = %s,
+                    tagging_completed = TRUE,
+                    tagging_model_used = %s,
+                    tagging_timestamp = CURRENT_TIMESTAMP
+                WHERE file_id = %s
+                """,
+                (Json(tags), model_used, file_id)
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+def get_document_tags(file_id: str) -> List[str]:
+    """
+    Get tags for a parsed document.
+    
+    Args:
+        file_id: Google Drive file ID
+        
+    Returns:
+        List of tag strings, or empty list if no tags
+    """
+    doc = get_parsed_document(file_id)
+    if not doc:
+        return []
+    
+    tags = doc.get('tags', [])
+    return tags if tags else []
+
+def is_document_tagged(file_id: str) -> bool:
+    """
+    Check if a document has been tagged.
+    
+    Args:
+        file_id: Google Drive file ID
+        
+    Returns:
+        True if document has been tagged, False otherwise
+    """
+    doc = get_parsed_document(file_id)
+    if not doc:
+        return False
+    
+    return doc.get('tagging_completed', False)
+
 def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
     """Get list of all parsed documents."""
     conn = get_db_connection()
@@ -252,6 +312,9 @@ def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
                            WHEN parsed_text ? 'text' THEN LENGTH(parsed_text->>'text')
                            ELSE 0
                        END as text_length,
+                       tags,
+                       tagging_completed,
+                       tagging_model_used,
                        parse_mode, result_type,
                        created_at, updated_at
                 FROM parsed_documents
@@ -889,7 +952,10 @@ def create_product(
     page_separator: str = '\n---\n',
     semantic_buffer_size: int = 1,
     pinecone_environment: str = 'us-east-1',
-    default_namespace: str = 'default'
+    default_namespace: str = 'default',
+    tagging_enabled: bool = False,
+    tagging_model: str = 'gpt-4o-mini',
+    tagging_prompt_template: str = None
 ) -> int:
     """Create a new product with full processing configuration."""
     conn = get_db_connection()
@@ -902,14 +968,16 @@ def create_product(
                  openai_api_key_secret, pinecone_api_key_secret, google_credentials_secret,
                  default_chunking_strategy, default_chunk_size, chunk_overlap, default_embedding_model,
                  embedding_dimension, parsing_mode, result_type, language, use_vendor_multimodal, page_separator,
-                 semantic_buffer_size, pinecone_environment, default_namespace)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 semantic_buffer_size, pinecone_environment, default_namespace,
+                 tagging_enabled, tagging_model, tagging_prompt_template)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (name, description, pinecone_index, llamaparse_secret, openai_secret,
                  pinecone_secret, google_credentials_secret, chunking_strategy, chunk_size, chunk_overlap,
                  embedding_model, embedding_dimension, parsing_mode, result_type, language, use_vendor_multimodal,
-                 page_separator, semantic_buffer_size, pinecone_environment, default_namespace)
+                 page_separator, semantic_buffer_size, pinecone_environment, default_namespace,
+                 tagging_enabled, tagging_model, tagging_prompt_template)
             )
             result = cur.fetchone()
             conn.commit()
@@ -939,7 +1007,10 @@ def update_product(
     semantic_buffer_size: int = None,
     pinecone_environment: str = None,
     default_namespace: str = None,
-    active: bool = None
+    active: bool = None,
+    tagging_enabled: bool = None,
+    tagging_model: str = None,
+    tagging_prompt_template: str = None
 ):
     """Update a product."""
     conn = get_db_connection()
@@ -1011,6 +1082,15 @@ def update_product(
             if active is not None:
                 set_clauses.append("active = %s")
                 values.append(active)
+            if tagging_enabled is not None:
+                set_clauses.append("tagging_enabled = %s")
+                values.append(tagging_enabled)
+            if tagging_model is not None:
+                set_clauses.append("tagging_model = %s")
+                values.append(tagging_model)
+            if tagging_prompt_template is not None:
+                set_clauses.append("tagging_prompt_template = %s")
+                values.append(tagging_prompt_template)
             
             values.append(product_id)
             

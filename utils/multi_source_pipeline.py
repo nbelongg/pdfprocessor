@@ -14,9 +14,11 @@ from utils.pinecone_uploader import initialize_pinecone, upload_to_pinecone
 from utils.database import (
     create_processing_job, update_job_status, 
     save_chunks, mark_chunks_uploaded, update_last_processed,
-    get_data_source, get_column_mapping_dict, get_product, get_product_api_keys
+    get_data_source, get_column_mapping_dict, get_product, get_product_api_keys,
+    update_document_tags, get_document_tags, is_document_tagged
 )
 from utils.deduplication import check_all_layers, record_or_update_paper
+from utils.tagger import generate_tags_with_openai, validate_tags
 import os
 
 
@@ -120,6 +122,12 @@ def process_multi_source_pipeline(
                 # Use product-specific embedding settings
                 product_config['embedding_model'] = product_info.get('default_embedding_model', 'text-embedding-3-small')
                 product_config['embedding_dimension'] = product_info.get('embedding_dimension')
+                
+                # Use product-specific tagging settings
+                product_config['tagging_enabled'] = product_info.get('tagging_enabled', False)
+                product_config['tagging_model'] = product_info.get('tagging_model', 'gpt-4o-mini')
+                product_config['tagging_prompt_template'] = product_info.get('tagging_prompt_template')
+                product_config['tagging_config'] = product_info.get('tagging_config', {})
                 
                 # Initialize product-specific Pinecone index if not already done
                 if not preview_mode and product_index is None:
@@ -258,6 +266,48 @@ def process_multi_source_pipeline(
                         value = row[col_name]
                         if pd.notna(value):
                             row_metadata[role] = str(value)
+                
+                # Generate AI tags if enabled in product configuration
+                tagging_enabled = product_config.get('tagging_enabled', False)
+                if tagging_enabled:
+                    if progress_callback:
+                        progress_callback(
+                            int((processed_papers / total_papers) * 100),
+                            f"Generating AI tags..."
+                        )
+                    
+                    try:
+                        # Check if already tagged
+                        if not is_document_tagged(file_id):
+                            tagging_model = product_config.get('tagging_model', 'gpt-4o-mini')
+                            prompt_template = product_config.get('tagging_prompt_template')
+                            openai_api_key = product_config.get('openai_api_key')
+                            
+                            # Generate tags
+                            tags = generate_tags_with_openai(
+                                text=parsed_text,
+                                filename=file_metadata.get('name', f'file_{file_id}.pdf'),
+                                model=tagging_model,
+                                prompt_template=prompt_template,
+                                api_key=openai_api_key,
+                                metadata=row_metadata
+                            )
+                            
+                            # Validate and save tags
+                            validated_tags = validate_tags(tags)
+                            update_document_tags(file_id, validated_tags, tagging_model)
+                        else:
+                            # Load existing tags
+                            validated_tags = get_document_tags(file_id)
+                            
+                        # Add tags to row_metadata so they get propagated to chunks
+                        row_metadata['tags'] = validated_tags
+                        row_metadata['auto_generated_tags'] = True
+                        
+                    except Exception as e:
+                        # Don't fail the entire pipeline if tagging fails
+                        print(f"Warning: Tagging failed for {file_metadata.get('name', '')}: {str(e)}")
+                        row_metadata['tags'] = []
                 
                 if progress_callback:
                     progress_callback(
