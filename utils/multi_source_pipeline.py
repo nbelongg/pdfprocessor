@@ -5,7 +5,10 @@ Multi-source pipeline for processing papers from multiple data sources.
 import pandas as pd
 from typing import List, Dict, Callable, Optional
 import uuid
+import logging
 from utils.google_sheets import extract_file_id_from_drive_link
+
+logger = logging.getLogger(__name__)
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
 from utils.llama_parser import parse_pdf_with_llamaparse
 from utils.chunker import chunk_text
