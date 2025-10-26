@@ -27,3 +27,33 @@ class TransientError(Exception):
         - Validation errors
     """
     pass
+
+
+class DatabaseError(Exception):
+    """
+    Base exception for database errors.
+    
+    Use this for permanent database errors that should not be retried.
+    Examples:
+        - Constraint violations (unique, foreign key, check)
+        - Data type errors
+        - Permission errors
+        - Syntax errors in SQL
+    """
+    pass
+
+
+class DatabaseTransientError(TransientError):
+    """
+    Database connectivity issues that should be retried.
+    
+    Use this for transient database errors that are likely to
+    succeed on retry.
+    
+    Examples:
+        - Connection timeout
+        - Network interruption
+        - Temporary lock conflicts
+        - Database server temporarily unavailable
+    """
+    pass

@@ -4,9 +4,11 @@ from llama_index.core.node_parser import (
     TokenTextSplitter
 )
 from llama_index.core import Document
-from llama_index.embeddings.openai import OpenAIEmbedding
 from typing import List, Dict
 from llama_index.core.schema import TextNode, BaseNode
+
+from utils.embedding_factory import create_embedding_model
+
 
 def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]:
     """
@@ -41,7 +43,8 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]
         )
     
     elif strategy == "Semantic":
-        embed_model = get_embed_model(config)
+        # Use centralized embedding factory
+        embed_model = create_embedding_model(config)
         splitter = SemanticSplitterNodeParser(
             buffer_size=config.get('semantic_buffer_size', 1),
             embed_model=embed_model,
@@ -57,41 +60,3 @@ def chunk_text(text: str, config: Dict, metadata: Dict = None) -> List[BaseNode]
     nodes = splitter.get_nodes_from_documents([doc])
     
     return nodes
-
-def get_embed_model(config: Dict):
-    """Get the embedding model based on configuration."""
-    embedding_model = config.get('embedding_model', '')
-    embedding_dimension = config.get('embedding_dimension')
-    
-    # Check if it's an OpenAI model (starts with 'text-embedding-' or contains 'OpenAI')
-    if embedding_model.startswith('text-embedding-') or 'OpenAI' in embedding_model:
-        # For legacy format like "OpenAI (text-embedding-3-small)", extract model name from inside parentheses
-        if 'OpenAI' in embedding_model and '(' in embedding_model and ')' in embedding_model:
-            # Extract text between parentheses: "OpenAI (text-embedding-3-small)" -> "text-embedding-3-small"
-            model_name = embedding_model.split('(')[1].split(')')[0].strip()
-        else:
-            # Direct model name like "text-embedding-3-small"
-            model_name = embedding_model
-        
-        embed_kwargs = {
-            'api_key': config.get('openai_api_key'),
-            'model': model_name
-        }
-        if embedding_dimension is not None:
-            embed_kwargs['dimensions'] = embedding_dimension
-        return OpenAIEmbedding(**embed_kwargs)
-    elif 'HuggingFace' in embedding_model:
-        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-        model_name = embedding_model.split('(')[0].strip()
-        return HuggingFaceEmbedding(
-            model_name=model_name
-        )
-    else:
-        # Default fallback to text-embedding-3-small
-        embed_kwargs = {
-            'api_key': config.get('openai_api_key'),
-            'model': 'text-embedding-3-small'
-        }
-        if embedding_dimension is not None:
-            embed_kwargs['dimensions'] = embedding_dimension
-        return OpenAIEmbedding(**embed_kwargs)

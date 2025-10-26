@@ -1,12 +1,38 @@
 import psycopg2
+from psycopg2 import errors as pg_errors
 from psycopg2.extras import RealDictCursor, Json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import json
 from datetime import datetime
+import logging
+
+from utils.exceptions import DatabaseError, DatabaseTransientError
+from utils.db_utils import get_db_transaction, with_db_error_handling
+
+logger = logging.getLogger(__name__)
+
+
+def _row_to_dict(row) -> Optional[Dict[str, Any]]:
+    """
+    Safely convert RealDictRow to standard Python dict.
+    
+    Args:
+        row: RealDictRow from database query or None
+        
+    Returns:
+        Dict if row exists, None otherwise
+    """
+    return dict(row) if row else None
+
 
 def get_db_connection():
-    """Get database connection."""
+    """
+    Get database connection.
+    
+    Note: Consider using context managers from utils.db_utils for
+    automatic connection management.
+    """
     return psycopg2.connect(
         os.getenv('DATABASE_URL'),
         cursor_factory=RealDictCursor
@@ -71,141 +97,178 @@ def init_products_table():
     finally:
         conn.close()
 
-def create_processing_job(job_id: str, config: Dict) -> int:
+def create_processing_job(job_id: str, config: Dict[str, Any]) -> Optional[int]:
     """Create a new processing job in the database."""
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO processing_jobs 
-                (job_id, status, sheet_url, sheet_tab, config)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    job_id,
-                    'pending',
-                    config.get('sheet_url'),
-                    config.get('sheet_tab'),
-                    Json(config)
-                )
-            )
-            result = cur.fetchone()
-            conn.commit()
-            return result['id'] if result else None
-    finally:
-        conn.close()
-
-def update_job_status(job_id: str, status: str, **kwargs):
-    """Update processing job status and metrics."""
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            set_clauses = ["status = %s", "updated_at = CURRENT_TIMESTAMP"]
-            values = [status]
-            
-            if 'total_pdfs' in kwargs:
-                set_clauses.append("total_pdfs = %s")
-                values.append(kwargs['total_pdfs'])
-            if 'processed_pdfs' in kwargs:
-                set_clauses.append("processed_pdfs = %s")
-                values.append(kwargs['processed_pdfs'])
-            if 'total_chunks' in kwargs:
-                set_clauses.append("total_chunks = %s")
-                values.append(kwargs['total_chunks'])
-            if 'total_embeddings' in kwargs:
-                set_clauses.append("total_embeddings = %s")
-                values.append(kwargs['total_embeddings'])
-            if 'vectors_stored' in kwargs:
-                set_clauses.append("vectors_stored = %s")
-                values.append(kwargs['vectors_stored'])
-            if status == 'completed':
-                set_clauses.append("completed_at = CURRENT_TIMESTAMP")
-            
-            values.append(job_id)
-            
-            cur.execute(
-                f"UPDATE processing_jobs SET {', '.join(set_clauses)} WHERE job_id = %s",
-                values
-            )
-            conn.commit()
-    finally:
-        conn.close()
-
-def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
-    """Save chunks to database."""
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            for idx, chunk in enumerate(chunks):
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO processing_chunks
-                    (job_id, file_id, filename, chunk_index, chunk_text, metadata, namespace)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO processing_jobs 
+                    (job_id, status, sheet_url, sheet_tab, config)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
                         job_id,
-                        file_id,
-                        filename,
-                        idx,
-                        chunk.get('text', ''),
-                        Json(chunk.get('metadata', {})),
-                        chunk.get('namespace', 'default')
+                        'pending',
+                        config.get('sheet_url'),
+                        config.get('sheet_tab'),
+                        Json(config)
                     )
                 )
-            conn.commit()
-    finally:
-        conn.close()
+                result = cur.fetchone()
+                conn.commit()
+                return result['id'] if result else None
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except pg_errors.UniqueViolation as e:
+        raise DatabaseError(f"Job ID already exists: {job_id}") from e
+    except psycopg2.OperationalError as e:
+        raise DatabaseTransientError(f"Database connection error: {e}") from e
+    except psycopg2.Error as e:
+        raise DatabaseError(f"Database error creating job: {e}") from e
+
+def update_job_status(job_id: str, status: str, **kwargs):
+    """Update processing job status and metrics."""
+    try:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                set_clauses = ["status = %s", "updated_at = CURRENT_TIMESTAMP"]
+                values = [status]
+                
+                if 'total_pdfs' in kwargs:
+                    set_clauses.append("total_pdfs = %s")
+                    values.append(kwargs['total_pdfs'])
+                if 'processed_pdfs' in kwargs:
+                    set_clauses.append("processed_pdfs = %s")
+                    values.append(kwargs['processed_pdfs'])
+                if 'total_chunks' in kwargs:
+                    set_clauses.append("total_chunks = %s")
+                    values.append(kwargs['total_chunks'])
+                if 'total_embeddings' in kwargs:
+                    set_clauses.append("total_embeddings = %s")
+                    values.append(kwargs['total_embeddings'])
+                if 'vectors_stored' in kwargs:
+                    set_clauses.append("vectors_stored = %s")
+                    values.append(kwargs['vectors_stored'])
+                if status == 'completed':
+                    set_clauses.append("completed_at = CURRENT_TIMESTAMP")
+                
+                values.append(job_id)
+                
+                cur.execute(
+                    f"UPDATE processing_jobs SET {', '.join(set_clauses)} WHERE job_id = %s",
+                    values
+                )
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except psycopg2.OperationalError as e:
+        raise DatabaseTransientError(f"Database connection error: {e}") from e
+    except psycopg2.Error as e:
+        logger.error(f"Error updating job status for {job_id}: {e}")
+        raise DatabaseError(f"Database error updating job: {e}") from e
+
+def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
+    """Save chunks to database."""
+    try:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                for idx, chunk in enumerate(chunks):
+                    cur.execute(
+                        """
+                        INSERT INTO processing_chunks
+                        (job_id, file_id, filename, chunk_index, chunk_text, metadata, namespace)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            job_id,
+                            file_id,
+                            filename,
+                            idx,
+                            chunk.get('text', ''),
+                            Json(chunk.get('metadata', {})),
+                            chunk.get('namespace', 'default')
+                        )
+                    )
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except psycopg2.OperationalError as e:
+        raise DatabaseTransientError(f"Database connection error: {e}") from e
+    except psycopg2.Error as e:
+        logger.error(f"Error saving chunks for job {job_id}, file {file_id}: {e}")
+        raise DatabaseError(f"Database error saving chunks: {e}") from e
 
 def save_parsed_document(file_id: str, filename: str, parsed_text: str, 
                          parsing_config: Dict = None, file_metadata: Dict = None):
     """Save raw parsed text from LlamaParse for future re-processing (as JSON)."""
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            # Convert parsed text to JSON structure
-            if isinstance(parsed_text, str):
-                parsed_json = {
-                    'text': parsed_text,
-                    'format': 'text',
-                    'length': len(parsed_text)
-                }
-            else:
-                # If already a dict/object, use as-is
-                parsed_json = parsed_text
-            
-            cur.execute(
-                """
-                INSERT INTO parsed_documents 
-                (file_id, filename, parsed_text, parse_mode, result_type, parsing_config, file_metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (file_id) 
-                DO UPDATE SET 
-                    parsed_text = EXCLUDED.parsed_text,
-                    filename = EXCLUDED.filename,
-                    parse_mode = EXCLUDED.parse_mode,
-                    result_type = EXCLUDED.result_type,
-                    parsing_config = EXCLUDED.parsing_config,
-                    file_metadata = EXCLUDED.file_metadata,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    file_id,
-                    filename,
-                    Json(parsed_json),
-                    parsing_config.get('parsing_mode') if parsing_config else None,
-                    parsing_config.get('result_type') if parsing_config else None,
-                    Json(parsing_config) if parsing_config else None,
-                    Json(file_metadata) if file_metadata else None
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Convert parsed text to JSON structure
+                if isinstance(parsed_text, str):
+                    parsed_json = {
+                        'text': parsed_text,
+                        'format': 'text',
+                        'length': len(parsed_text)
+                    }
+                else:
+                    # If already a dict/object, use as-is
+                    parsed_json = parsed_text
+                
+                cur.execute(
+                    """
+                    INSERT INTO parsed_documents 
+                    (file_id, filename, parsed_text, parse_mode, result_type, parsing_config, file_metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_id) 
+                    DO UPDATE SET 
+                        parsed_text = EXCLUDED.parsed_text,
+                        filename = EXCLUDED.filename,
+                        parse_mode = EXCLUDED.parse_mode,
+                        result_type = EXCLUDED.result_type,
+                        parsing_config = EXCLUDED.parsing_config,
+                        file_metadata = EXCLUDED.file_metadata,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        file_id,
+                        filename,
+                        Json(parsed_json),
+                        parsing_config.get('parsing_mode') if parsing_config else None,
+                        parsing_config.get('result_type') if parsing_config else None,
+                        Json(parsing_config) if parsing_config else None,
+                        Json(file_metadata) if file_metadata else None
+                    )
                 )
-            )
-            conn.commit()
-    finally:
-        conn.close()
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except psycopg2.OperationalError as e:
+        raise DatabaseTransientError(f"Database connection error: {e}") from e
+    except psycopg2.Error as e:
+        logger.error(f"Error saving parsed document for file {file_id}: {e}")
+        raise DatabaseError(f"Database error saving parsed document: {e}") from e
 
-def get_parsed_document(file_id: str) -> Dict:
+def get_parsed_document(file_id: str) -> Optional[Dict[str, Any]]:
     """Retrieve raw parsed text for a file (returns JSON)."""
     conn = get_db_connection()
     try:
@@ -214,11 +277,11 @@ def get_parsed_document(file_id: str) -> Dict:
                 "SELECT * FROM parsed_documents WHERE file_id = %s",
                 (file_id,)
             )
-            return cur.fetchone()
+            return _row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
-def get_parsed_text_for_rechunking(file_id: str) -> str:
+def get_parsed_text_for_rechunking(file_id: str) -> Optional[str]:
     """
     Retrieve the parsed text string for re-chunking/re-embedding.
     Extracts the 'text' field from the JSON.
@@ -248,23 +311,32 @@ def update_document_tags(file_id: str, tags: List[str], model_used: str):
         tags: List of tag strings
         model_used: OpenAI model used for tagging
     """
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE parsed_documents 
-                SET tags = %s,
-                    tagging_completed = TRUE,
-                    tagging_model_used = %s,
-                    tagging_timestamp = CURRENT_TIMESTAMP
-                WHERE file_id = %s
-                """,
-                (Json(tags), model_used, file_id)
-            )
-            conn.commit()
-    finally:
-        conn.close()
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE parsed_documents 
+                    SET tags = %s,
+                        tagging_completed = TRUE,
+                        tagging_model_used = %s,
+                        tagging_timestamp = CURRENT_TIMESTAMP
+                    WHERE file_id = %s
+                    """,
+                    (Json(tags), model_used, file_id)
+                )
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except psycopg2.OperationalError as e:
+        raise DatabaseTransientError(f"Database connection error: {e}") from e
+    except psycopg2.Error as e:
+        logger.error(f"Error updating tags for file {file_id}: {e}")
+        raise DatabaseError(f"Database error updating tags: {e}") from e
 
 def get_document_tags(file_id: str) -> List[str]:
     """
@@ -299,7 +371,7 @@ def is_document_tagged(file_id: str) -> bool:
     
     return doc.get('tagging_completed', False)
 
-def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
+def get_all_parsed_documents(limit: int = 100) -> List[Dict[str, Any]]:
     """Get list of all parsed documents."""
     conn = get_db_connection()
     try:
@@ -323,7 +395,7 @@ def get_all_parsed_documents(limit: int = 100) -> List[Dict]:
                 """,
                 (limit,)
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -344,7 +416,7 @@ def mark_chunks_uploaded(job_id: str, file_id: str):
     finally:
         conn.close()
 
-def get_job_history(limit: int = 50) -> List[Dict]:
+def get_job_history(limit: int = 50) -> List[Dict[str, Any]]:
     """Get processing job history."""
     conn = get_db_connection()
     try:
@@ -361,11 +433,11 @@ def get_job_history(limit: int = 50) -> List[Dict]:
                 """,
                 (limit,)
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
-def get_job_details(job_id: str) -> Optional[Dict]:
+def get_job_details(job_id: str) -> Optional[Dict[str, Any]]:
     """Get detailed information about a specific job."""
     conn = get_db_connection()
     try:
@@ -376,11 +448,11 @@ def get_job_details(job_id: str) -> Optional[Dict]:
                 """,
                 (job_id,)
             )
-            return cur.fetchone()
+            return _row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
-def get_job_chunks(job_id: str) -> List[Dict]:
+def get_job_chunks(job_id: str) -> List[Dict[str, Any]]:
     """Get all chunks for a specific job."""
     conn = get_db_connection()
     try:
@@ -393,27 +465,24 @@ def get_job_chunks(job_id: str) -> List[Dict]:
                 """,
                 (job_id,)
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
+@with_db_error_handling
 def delete_job(job_id: str):
     """Delete a job and all its chunks (cascades)."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM processing_jobs WHERE job_id = %s",
                 (job_id,)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def save_metadata_transformation(name: str, description: str, rules: Dict):
     """Save a metadata transformation rule."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -424,11 +493,8 @@ def save_metadata_transformation(name: str, description: str, rules: Dict):
                 """,
                 (name, description, Json(rules), description, Json(rules))
             )
-            conn.commit()
-    finally:
-        conn.close()
 
-def get_metadata_transformations() -> List[Dict]:
+def get_metadata_transformations() -> List[Dict[str, Any]]:
     """Get all metadata transformations."""
     conn = get_db_connection()
     try:
@@ -436,30 +502,27 @@ def get_metadata_transformations() -> List[Dict]:
             cur.execute(
                 "SELECT * FROM metadata_transformations ORDER BY name"
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
+@with_db_error_handling
 def delete_metadata_transformation(name: str):
     """Delete a metadata transformation."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM metadata_transformations WHERE name = %s",
                 (name,)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 # Data Sources Functions
 
-def create_data_source(name: str, sheet_url: str, sheet_tab: str, topic: str = None, 
-                       default_namespace: str = 'default', product_id: int = None) -> int:
+@with_db_error_handling
+def create_data_source(name: str, sheet_url: str, sheet_tab: str, topic: Optional[str] = None, 
+                       default_namespace: str = 'default', product_id: Optional[int] = None) -> Optional[int]:
     """Create a new data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -470,12 +533,9 @@ def create_data_source(name: str, sheet_url: str, sheet_tab: str, topic: str = N
                 (name, sheet_url, sheet_tab, topic, default_namespace, product_id)
             )
             result = cur.fetchone()
-            conn.commit()
             return result['id'] if result else None
-    finally:
-        conn.close()
 
-def get_data_sources(active_only: bool = False) -> List[Dict]:
+def get_data_sources(active_only: bool = False) -> List[Dict[str, Any]]:
     """Get all data sources."""
     conn = get_db_connection()
     try:
@@ -488,11 +548,11 @@ def get_data_sources(active_only: bool = False) -> List[Dict]:
                 cur.execute(
                     "SELECT * FROM data_sources ORDER BY name"
                 )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
-def get_data_source(source_id: int) -> Optional[Dict]:
+def get_data_source(source_id: int) -> Optional[Dict[str, Any]]:
     """Get a specific data source by ID."""
     conn = get_db_connection()
     try:
@@ -501,7 +561,7 @@ def get_data_source(source_id: int) -> Optional[Dict]:
                 "SELECT * FROM data_sources WHERE id = %s",
                 (source_id,)
             )
-            return cur.fetchone()
+            return _row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
@@ -578,7 +638,7 @@ def save_column_mapping(source_id: int, column_role: str, column_name: str, is_r
     finally:
         conn.close()
 
-def get_column_mappings(source_id: int) -> List[Dict]:
+def get_column_mappings(source_id: int) -> List[Dict[str, Any]]:
     """Get all column mappings for a data source."""
     conn = get_db_connection()
     try:
@@ -587,7 +647,7 @@ def get_column_mappings(source_id: int) -> List[Dict]:
                 "SELECT * FROM column_mappings WHERE source_id = %s ORDER BY column_role",
                 (source_id,)
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -609,7 +669,7 @@ def get_column_mapping_dict(source_id: int) -> Dict[str, str]:
     mappings = get_column_mappings(source_id)
     return {m['column_role']: m['column_name'] for m in mappings}
 
-def check_paper_processed(drive_file_id: str) -> Optional[Dict]:
+def check_paper_processed(drive_file_id: str) -> Optional[Dict[str, Any]]:
     """Check if a paper has been processed before by Drive file ID."""
     conn = get_db_connection()
     try:
@@ -618,11 +678,11 @@ def check_paper_processed(drive_file_id: str) -> Optional[Dict]:
                 "SELECT * FROM processed_papers WHERE drive_file_id = %s",
                 (drive_file_id,)
             )
-            return cur.fetchone()
+            return _row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
-def check_paper_by_content_hash(content_hash: str) -> Optional[Dict]:
+def check_paper_by_content_hash(content_hash: str) -> Optional[Dict[str, Any]]:
     """Check if a paper has been processed before by content hash."""
     conn = get_db_connection()
     try:
@@ -631,7 +691,7 @@ def check_paper_by_content_hash(content_hash: str) -> Optional[Dict]:
                 "SELECT * FROM processed_papers WHERE content_hash = %s",
                 (content_hash,)
             )
-            return cur.fetchone()
+            return _row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
