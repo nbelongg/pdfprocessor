@@ -306,7 +306,7 @@ def process_multi_source_pipeline(
                         
                     except Exception as e:
                         # Don't fail the entire pipeline if tagging fails
-                        print(f"Warning: Tagging failed for {file_metadata.get('name', '')}: {str(e)}")
+                        logger.warning(f"Tagging failed for {file_metadata.get('name', '')}: {str(e)}")
                         row_metadata['tags'] = []
                 
                 if progress_callback:

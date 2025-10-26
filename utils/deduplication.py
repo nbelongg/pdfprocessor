@@ -1,4 +1,26 @@
+"""
+Three-layer deduplication system for PDF processing.
+
+This module implements a multi-tiered approach to prevent duplicate processing:
+- Layer 1: Google Drive file ID lookup (fastest)
+- Layer 2: Content hash comparison (title + authors)
+- Layer 3: Embedding similarity search (most thorough)
+
+Usage:
+    from utils.deduplication import check_all_layers
+    
+    is_duplicate, existing_data = check_all_layers(
+        drive_file_id='abc123',
+        paper_title='Sample Paper',
+        authors='John Doe',
+        embedding=[0.1, 0.2, ...],
+        namespace='research',
+        pinecone_index=index
+    )
+"""
+
 import hashlib
+import logging
 from typing import Dict, List, Optional, Tuple
 from utils.database import (
     check_paper_processed,
@@ -6,6 +28,8 @@ from utils.database import (
     record_processed_paper,
     update_processed_paper
 )
+
+logger = logging.getLogger(__name__)
 
 def generate_content_hash(paper_title: str, authors: str) -> str:
     """Generate a content hash from paper title and authors."""
@@ -65,7 +89,7 @@ def check_duplicate_layer3(embedding: List[float], namespace: str, pinecone_inde
         
         return False, None
     except Exception as e:
-        print(f"Warning: Layer 3 similarity check failed: {e}")
+        logger.warning(f"Layer 3 similarity check failed: {e}")
         return False, None
 
 def check_all_layers(

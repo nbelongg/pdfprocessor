@@ -1,3 +1,16 @@
+"""
+Embedding generation for text chunks.
+
+This module creates vector embeddings from text nodes using the
+centralized embedding factory. Supports OpenAI models with custom dimensions.
+
+Usage:
+    from utils.embedder import create_embeddings
+    
+    config = {'embedding_model': 'text-embedding-3-small', 'openai_api_key': '...'}
+    embeddings = create_embeddings(nodes, config)
+"""
+
 from llama_index.core.schema import TextNode, BaseNode
 from typing import List, Dict
 import os
