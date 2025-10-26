@@ -565,10 +565,10 @@ def get_data_source(source_id: int) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+@with_db_error_handling
 def update_data_source(source_id: int, **kwargs):
     """Update a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
             values = []
@@ -584,27 +584,21 @@ def update_data_source(source_id: int, **kwargs):
                 f"UPDATE data_sources SET {', '.join(set_clauses)} WHERE id = %s",
                 values
             )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def delete_data_source(source_id: int):
     """Delete a data source and its column mappings (cascade)."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM data_sources WHERE id = %s",
                 (source_id,)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_last_processed(source_id: int, row_number: int):
     """Update the last processed row for a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -614,16 +608,13 @@ def update_last_processed(source_id: int, row_number: int):
                 """,
                 (row_number, source_id)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 # Column Mapping Functions
 
+@with_db_error_handling
 def save_column_mapping(source_id: int, column_role: str, column_name: str, is_required: bool = False):
     """Save a column mapping for a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -634,9 +625,6 @@ def save_column_mapping(source_id: int, column_role: str, column_name: str, is_r
                 """,
                 (source_id, column_role, column_name, is_required, column_name, is_required)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_column_mappings(source_id: int) -> List[Dict[str, Any]]:
     """Get all column mappings for a data source."""
@@ -651,18 +639,15 @@ def get_column_mappings(source_id: int) -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
+@with_db_error_handling
 def delete_column_mapping(source_id: int, column_role: str):
     """Delete a column mapping."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM column_mappings WHERE source_id = %s AND column_role = %s",
                 (source_id, column_role)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_column_mapping_dict(source_id: int) -> Dict[str, str]:
     """Get column mappings as a dictionary {role: column_name}."""
@@ -695,6 +680,7 @@ def check_paper_by_content_hash(content_hash: str) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+@with_db_error_handling
 def record_processed_paper(
     drive_file_id: str,
     content_hash: str,
@@ -706,8 +692,7 @@ def record_processed_paper(
     row_number: int
 ) -> int:
     """Record a newly processed paper."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -728,15 +713,12 @@ def record_processed_paper(
                 (source_id, paper_id, row_number)
             )
             
-            conn.commit()
             return paper_id
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_processed_paper(paper_id: int, source_id: int, row_number: int):
     """Update existing processed paper (increment count, update timestamp)."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -758,10 +740,6 @@ def update_processed_paper(paper_id: int, source_id: int, row_number: int):
                 """,
                 (source_id, paper_id, row_number)
             )
-            
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_deduplication_stats() -> Dict:
     """Get statistics about processed papers and deduplication."""
@@ -785,10 +763,10 @@ def get_deduplication_stats() -> Dict:
     finally:
         conn.close()
 
+@with_db_error_handling
 def create_scheduled_job(source_id: int, job_name: str, schedule_type: str, schedule_config: Dict) -> int:
     """Create a new scheduled job for a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -804,8 +782,6 @@ def create_scheduled_job(source_id: int, job_name: str, schedule_type: str, sche
                 (source_id, job_name, schedule_type, Json(schedule_config))
             )
             return cur.fetchone()['id']
-    finally:
-        conn.close()
 
 def get_scheduled_job(source_id: int) -> Optional[Dict]:
     """Get scheduled job for a data source."""
@@ -830,23 +806,20 @@ def get_all_scheduled_jobs(enabled_only: bool = False) -> List[Dict]:
     finally:
         conn.close()
 
+@with_db_error_handling
 def update_scheduled_job_status(job_id: int, enabled: bool):
     """Enable or disable a scheduled job."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE scheduled_jobs SET enabled = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (enabled, job_id)
             )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_scheduled_job_run_time(job_id: int, next_run_at, last_run_at=None):
     """Update scheduled job run times."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             if last_run_at:
                 cur.execute(
@@ -862,14 +835,11 @@ def update_scheduled_job_run_time(job_id: int, next_run_at, last_run_at=None):
                     "UPDATE scheduled_jobs SET next_run_at = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                     (next_run_at, job_id)
                 )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def record_scheduled_job_run(scheduled_job_id: int, processing_job_id: str, status: str, **kwargs) -> int:
     """Record a scheduled job run."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -892,13 +862,11 @@ def record_scheduled_job_run(scheduled_job_id: int, processing_job_id: str, stat
                 )
             )
             return cur.fetchone()['id']
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_scheduled_job_run(run_id: int, status: str, **kwargs):
     """Update a scheduled job run."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             set_clauses = ["status = %s", "updated_at = CURRENT_TIMESTAMP"]
             values = [status]
@@ -925,7 +893,6 @@ def update_scheduled_job_run(run_id: int, status: str, **kwargs):
                 f"UPDATE scheduled_job_runs SET {', '.join(set_clauses)} WHERE id = %s",
                 values
             )
-            conn.commit()
             
             if status == 'completed':
                 cur.execute(
@@ -937,10 +904,6 @@ def update_scheduled_job_run(run_id: int, status: str, **kwargs):
                     "UPDATE scheduled_jobs SET failed_runs = failed_runs + 1 WHERE id = (SELECT scheduled_job_id FROM scheduled_job_runs WHERE id = %s)",
                     (run_id,)
                 )
-            
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_scheduled_job_runs(scheduled_job_id: int, limit: int = 20) -> List[Dict]:
     """Get run history for a scheduled job."""
@@ -955,15 +918,12 @@ def get_scheduled_job_runs(scheduled_job_id: int, limit: int = 20) -> List[Dict]
     finally:
         conn.close()
 
+@with_db_error_handling
 def delete_scheduled_job(job_id: int):
     """Delete a scheduled job."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM scheduled_jobs WHERE id = %s", (job_id,))
-            conn.commit()
-    finally:
-        conn.close()
 
 # ============================================
 # PRODUCT MANAGEMENT FUNCTIONS
@@ -992,6 +952,7 @@ def get_product(product_id: int) -> Optional[Dict]:
     finally:
         conn.close()
 
+@with_db_error_handling
 def create_product(
     name: str,
     pinecone_index: str,
@@ -1018,8 +979,7 @@ def create_product(
     tagging_prompt_template: str = None
 ) -> int:
     """Create a new product with full processing configuration."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -1040,11 +1000,9 @@ def create_product(
                  tagging_enabled, tagging_model, tagging_prompt_template)
             )
             result = cur.fetchone()
-            conn.commit()
             return result['id'] if result else None
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_product(
     product_id: int,
     name: str = None,
@@ -1073,8 +1031,7 @@ def update_product(
     tagging_prompt_template: str = None
 ):
     """Update a product."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
             values = []
@@ -1158,19 +1115,13 @@ def update_product(
                 f"UPDATE products SET {', '.join(set_clauses)} WHERE id = %s",
                 values
             )
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def delete_product(product_id: int):
     """Delete a product."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM products WHERE id = %s", (product_id,))
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_product_api_keys(product_id: int) -> Dict:
     """Get API keys and credentials for a product from environment variables."""
@@ -1199,10 +1150,10 @@ def get_product_api_keys(product_id: int) -> Dict:
     
     return api_keys
 
+@with_db_error_handling
 def init_celery_tables():
     """Initialize Celery job tracking tables."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS celery_jobs (
@@ -1230,15 +1181,11 @@ def init_celery_tables():
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_celery_jobs_status ON celery_jobs(status)
             """)
-            
-            conn.commit()
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def create_celery_job(task_id: str, task_name: str, source_id: Optional[int] = None, submitted_by: str = 'system') -> int:
     """Create a new Celery job record."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -1249,15 +1196,12 @@ def create_celery_job(task_id: str, task_name: str, source_id: Optional[int] = N
                 (task_id, task_name, source_id, submitted_by, 'pending')
             )
             job_id = cur.fetchone()['id']
-            conn.commit()
             return job_id
-    finally:
-        conn.close()
 
+@with_db_error_handling
 def update_celery_job_status(task_id: str, status: str, **kwargs):
     """Update Celery job status and metadata."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             set_clauses = ["status = %s", "updated_at = CURRENT_TIMESTAMP"]
             values = [status]
@@ -1286,9 +1230,6 @@ def update_celery_job_status(task_id: str, status: str, **kwargs):
                 f"UPDATE celery_jobs SET {', '.join(set_clauses)} WHERE task_id = %s",
                 values
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 def get_celery_job(task_id: str) -> Optional[Dict]:
     """Get a Celery job by task ID."""
