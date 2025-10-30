@@ -11,6 +11,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import time
+import logging
 from components.common import page_header, refresh_button, success_message, error_message
 from utils.db.jobs import (
     get_all_celery_jobs, get_celery_job,
@@ -22,6 +23,8 @@ from utils.db.scheduling import get_all_scheduled_jobs, get_scheduled_job_runs
 from utils.google_sheets import load_sheet_data
 from utils.config_builder import get_product_config_from_source
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def render():
@@ -502,13 +505,21 @@ def _parse_row_input(rows_input: str) -> List[int]:
             try:
                 start, end = part.split('-')
                 rows.extend(range(int(start), int(end) + 1))
-            except:
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Invalid range format '{part}': {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error parsing range '{part}': {e}")
                 continue
         else:
             # Single number
             try:
                 rows.append(int(part))
-            except:
+            except ValueError as e:
+                logger.warning(f"Invalid row number '{part}': {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error parsing row number '{part}': {e}")
                 continue
     
     return sorted(list(set(rows)))  # Remove duplicates and sort
@@ -752,8 +763,12 @@ def _render_job_details(job: Dict):
                 completed = pd.to_datetime(job['completed_at'])
                 duration = completed - created
                 st.markdown(f"**Duration:** {duration}")
-            except:
-                pass
+            except (ValueError, KeyError, TypeError) as e:
+                logger.warning(f"Could not calculate duration for job {job.get('task_id')}: {e}")
+                st.markdown("**Duration:** N/A")
+            except Exception as e:
+                logger.error(f"Unexpected error calculating duration: {e}")
+                st.markdown("**Duration:** N/A")
     
     # Progress
     if job.get('progress_total', 0) > 0:

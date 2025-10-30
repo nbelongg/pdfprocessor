@@ -382,13 +382,10 @@ def process_batch_task(
             'details': []
         }
         
+        # Phase 1: Submit all tasks asynchronously (true parallel processing)
+        async_tasks = []
+        
         for idx, row_idx in enumerate(selected_indices):
-            self.update_progress(
-                idx,
-                total_files,
-                f"Processing PDF {idx + 1} of {total_files}..."
-            )
-            
             row = sheet_data.iloc[row_idx]
             
             drive_link = row.get(drive_link_column, '')
@@ -416,6 +413,7 @@ def process_batch_task(
             if namespace_column and namespace_column in row and pd.notna(row[namespace_column]):
                 namespace = str(row[namespace_column])
             
+            # Submit task asynchronously
             pdf_result = process_pdf_task.apply_async(args=[
                 file_id,
                 row_metadata.get('filename', f'file_{file_id}.pdf'),
@@ -425,14 +423,88 @@ def process_batch_task(
                 namespace
             ])
             
-            pdf_result_data = pdf_result.get()
+            async_tasks.append({
+                'task': pdf_result,
+                'file_id': file_id,
+                'row_idx': row_idx,
+                'index': idx
+            })
+        
+        # Phase 2: Collect results as tasks complete (poll for readiness, don't block in order)
+        completed = 0
+        total_tasks = len(async_tasks)
+        task_timeout = 10  # Short timeout for checking if task is ready
+        max_wait_time = 7200  # 2 hours max total wait time for all tasks
+        start_time = time.time()
+        pending_tasks = async_tasks.copy()
+        
+        while pending_tasks and (time.time() - start_time) < max_wait_time:
+            # Check each pending task for readiness
+            for task_info in pending_tasks[:]:  # Iterate over copy to allow removal
+                task = task_info['task']
+                
+                # Check if task is ready (non-blocking)
+                if task.ready():
+                    try:
+                        # Get result with short timeout since we know it's ready
+                        pdf_result_data = task.get(timeout=task_timeout)
+                        results['details'].append(pdf_result_data)
+                        
+                        if pdf_result_data['status'] == 'success':
+                            results['total_pdfs'] += 1
+                            results['total_chunks'] += pdf_result_data.get('chunks', 0)
+                            results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
+                        
+                        completed += 1
+                        pending_tasks.remove(task_info)
+                        
+                        # Update progress
+                        self.update_progress(
+                            completed,
+                            total_tasks,
+                            f"Completed {completed}/{total_tasks} PDFs..."
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"Error getting result for {task_info['file_id']}: {str(e)}")
+                        results['details'].append({
+                            'file_id': task_info['file_id'],
+                            'row': task_info['row_idx'],
+                            'status': 'error',
+                            'error': f"Task execution failed: {str(e)}"
+                        })
+                        completed += 1
+                        pending_tasks.remove(task_info)
+                        
+                        # Update progress
+                        self.update_progress(
+                            completed,
+                            total_tasks,
+                            f"Completed {completed}/{total_tasks} PDFs..."
+                        )
             
-            results['details'].append(pdf_result_data)
+            # Small delay before next polling iteration to avoid busy waiting
+            if pending_tasks:
+                time.sleep(0.5)
+        
+        # Handle any tasks that timed out
+        for task_info in pending_tasks:
+            logger.error(f"Task for {task_info['file_id']} timed out after {max_wait_time}s")
+            try:
+                task_info['task'].revoke(terminate=True)  # Revoke stuck task
+            except Exception as e:
+                logger.warning(f"Failed to revoke task: {e}")
             
-            if pdf_result_data['status'] == 'success':
-                results['total_pdfs'] += 1
-                results['total_chunks'] += pdf_result_data.get('chunks', 0)
-                results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
+            results['details'].append({
+                'file_id': task_info['file_id'],
+                'row': task_info['row_idx'],
+                'status': 'error',
+                'error': f"Task timed out after {max_wait_time} seconds"
+            })
+            completed += 1
+        
+        # Final progress update
+        self.update_progress(total_tasks, total_tasks, "Batch processing completed")
         
         if not preview_mode:
             update_job_status(
