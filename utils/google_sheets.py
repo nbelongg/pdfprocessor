@@ -108,12 +108,14 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
             worksheet_id = worksheet.id
             
             # Request cell data including hyperlinks
-            # Need to request both hyperlink field AND userEnteredFormat.textFormat.link
+            # CRITICAL: includeGridData=True is required to get rich text hyperlinks (Ctrl+K links)
+            # ranges must be a list, not a string
             print(f"📋 LOAD_SHEET_DATA: Requesting cell data with hyperlinks...")
             result = service.spreadsheets().get(
                 spreadsheetId=sheet_id,
-                ranges=f'{tab_name}!A:ZZ',
-                fields='sheets(data(rowData(values(hyperlink,formattedValue,userEnteredFormat(textFormat(link(uri)))))))'
+                ranges=[f'{tab_name}!A:ZZ'],  # Must be a list
+                includeGridData=True,  # Required for rich text hyperlinks
+                fields='sheets/data/rowData/values(hyperlink,formattedValue)'  # Simplified path
             ).execute()
             
             print(f"📋 LOAD_SHEET_DATA: Successfully fetched hyperlink data from API")
@@ -154,16 +156,10 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                             if col_idx < len(headers) and headers[col_idx]:
                                 column_name = headers[col_idx]
                                 
-                                # Check for hyperlink in two places:
-                                # 1. cell.hyperlink (from HYPERLINK() formula)
-                                # 2. cell.userEnteredFormat.textFormat.link.uri (from Insert > Link UI)
+                                # With includeGridData=True, the hyperlink field is populated for:
+                                # 1. HYPERLINK() formulas
+                                # 2. Rich text hyperlinks (Ctrl+K / Insert Link UI)
                                 hyperlink = cell.get('hyperlink')
-                                if not hyperlink:
-                                    # Check textFormat.link (used when link is added via UI)
-                                    user_format = cell.get('userEnteredFormat', {})
-                                    text_format = user_format.get('textFormat', {})
-                                    link_obj = text_format.get('link', {})
-                                    hyperlink = link_obj.get('uri')
                                 
                                 # If cell has a hyperlink, replace the display value with the URL
                                 if hyperlink and column_name in df.columns:
