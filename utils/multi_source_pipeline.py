@@ -143,6 +143,7 @@ def process_multi_source_pipeline(
         for idx in selected_indices:
             try:
                 processed_papers += 1
+                logger.info(f"🔍 DEBUG: Starting processing for row {idx}")
                 
                 if progress_callback:
                     progress_callback(
@@ -150,7 +151,9 @@ def process_multi_source_pipeline(
                         f"Processing paper {processed_papers}/{total_papers} from {source_info['name']}..."
                     )
                 
+                logger.info(f"🔍 DEBUG: About to access row {idx} from sheet_data")
                 row = sheet_data.iloc[idx]
+                logger.info(f"🔍 DEBUG: Row type: {type(row)}, Row index: {row.name if hasattr(row, 'name') else 'N/A'}")
                 
                 # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
                 drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
@@ -431,6 +434,11 @@ def process_multi_source_pipeline(
                 
             except Exception as e:
                 has_errors = True
+                import traceback
+                error_details = traceback.format_exc()
+                logger.error(f"❌ ERROR processing row {idx}: {str(e)}\n{error_details}")
+                print(f"❌ ERROR processing row {idx}: {str(e)}\n{error_details}")
+                
                 results['details'].append({
                     'source': source_info['name'],
                     'row': idx,

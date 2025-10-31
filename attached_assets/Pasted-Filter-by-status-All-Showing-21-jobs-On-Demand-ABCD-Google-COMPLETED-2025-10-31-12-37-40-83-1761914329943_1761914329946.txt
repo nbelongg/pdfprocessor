@@ -1,0 +1,130 @@
+Filter by status:
+
+All
+Showing 21 jobs
+
+✅ On-Demand: ABCD Google - COMPLETED (2025-10-31 12:37:40.836592)
+
+Task ID: 265d0514-44ce-45...
+
+Status: completed
+
+Created: 2025-10-31 12:37:40.836592
+
+📊 View Result
+
+{
+"job_id":"9e4aa784-22aa-43c0-8781-4ee77e21724c"
+"details":[
+0:{
+"row":35
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "ELF-Guideline-2024.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+1:{
+"row":36
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "just fever.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+2:{
+"row":37
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Original Article - 01.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+3:{
+"row":38
+"error":"'str' object has no attribute 'get'"
+"source":"ABCD Google"
+"status":"error"
+}
+4:{
+"row":39
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Tropical Med Int Health - 2012 - Malaviya - Village health workers in Bihar  India  an untapped reso""
+"source":"ABCD Google"
+"status":"skipped"
+}
+5:{
+"row":40
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "IIHMR-HCE-Case-Report-Feb-14.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+6:{
+"row":41
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "D2C-Case-Study.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+7:{
+"row":42
+"error":"'str' object has no attribute 'get'"
+"source":"ABCD Google"
+"status":"error"
+}
+8:{
+"row":43
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "knowledge.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+9:{
+"row":44
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "s12961-019-0427-0.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+10:{
+"row":45
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "mm ss.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+11:{
+"row":46
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Mental Health Challenges Abound for Lymphatic Filariasis Patients in India - Health On Air.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+12:{
+"row":47
+"error":"'str' object has no attribute 'get'"
+"source":"ABCD Google"
+"status":"error"
+}
+13:{
+"row":48
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Living with lymphatic filariasis_ stigma, struggle and tenuous survival for thousands in India – The""
+"source":"ABCD Google"
+"status":"skipped"
+}
+14:{
+"row":49
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "empowering lf.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+15:{
+"row":50
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "experiences.pdf""
+"source":"ABCD Google"
+"status":"skipped"
+}
+]
+"total_pdfs":0
+"total_chunks":0
+"preview_chunks":NULL
+"vectors_stored":0
+"total_embeddings":0
+"sources_processed":{
+"ABCD Google":{
+"source_id":5
+"source_name":"ABCD Google"
+"chunks_created":0
+"papers_processed":0
+"last_row_processed":0
+}
+}
+}
