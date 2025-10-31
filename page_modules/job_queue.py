@@ -301,15 +301,18 @@ def _retry_failed_job(job: Dict):
             st.warning(f"⚠️ Data source '{source['name']}' is inactive. Please activate it first.")
             return
         
-        # Load Google credentials
-        google_creds_path = os.getenv('GOOGLE_CREDENTIALS_PATH')
-        if not google_creds_path or not os.path.exists(google_creds_path):
-            error_message('Google credentials not configured')
+        # Get product-based credentials
+        product_id = source.get('product_id')
+        if not product_id:
+            error_message('No product associated with this data source')
             return
         
-        import json
-        with open(google_creds_path, 'r') as f:
-            google_credentials = json.load(f)
+        product_api_keys = get_product_api_keys(product_id)
+        google_credentials = product_api_keys.get('GOOGLE_CREDENTIALS')
+        
+        if not google_credentials:
+            error_message('Google credentials not configured for this product. Please add them in the Products tab.')
+            return
         
         # Load sheet data
         sheet_data = load_sheet_data(
@@ -533,18 +536,21 @@ def _trigger_processing_job(
 ) -> Dict:
     """Trigger an on-demand processing job."""
     try:
+        # Get product-based credentials
+        product_id = source.get('product_id')
+        if not product_id:
+            return {'success': False, 'error': 'No product associated with this data source'}
+        
+        product_api_keys = get_product_api_keys(product_id)
+        google_credentials = product_api_keys.get('GOOGLE_CREDENTIALS')
+        
+        if not google_credentials:
+            return {'success': False, 'error': 'Google credentials not configured for this product. Please add them in the Products tab.'}
+        
         # Load sheet data
-        google_creds_path = os.getenv('GOOGLE_CREDENTIALS_PATH')
-        if not google_creds_path or not os.path.exists(google_creds_path):
-            return {'success': False, 'error': 'Google credentials not configured'}
-        
-        import json
-        with open(google_creds_path, 'r') as f:
-            google_credentials = json.load(f)
-        
         sheet_data = load_sheet_data(
             source['sheet_url'],
-            source['sheet_tab_name'],
+            source['sheet_tab'],
             google_credentials
         )
         
