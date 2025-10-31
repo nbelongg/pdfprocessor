@@ -123,6 +123,10 @@ def process_multi_source_pipeline(
             if drive_link_column in sheet_data.columns:
                 first_values = sheet_data[drive_link_column].head(3).tolist()
                 print(f"🔍 PIPELINE: First 3 values in '{drive_link_column}': {first_values}")
+                # Show full URLs if they're long
+                for i, val in enumerate(first_values[:3]):
+                    if val and len(str(val)) > 50:
+                        print(f"🔍 PIPELINE: Value {i}: {str(val)[:150]}...")
                 logger.info(f"First few values in '{drive_link_column}': {first_values}")
             else:
                 print(f"🔍 PIPELINE: ❌ Drive link column '{drive_link_column}' NOT FOUND!")
