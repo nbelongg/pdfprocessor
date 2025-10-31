@@ -388,7 +388,8 @@ def process_batch_task(
         for idx, row_idx in enumerate(selected_indices):
             row = sheet_data.iloc[row_idx]
             
-            drive_link = row.get(drive_link_column, '')
+            # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
+            drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
             file_id = extract_file_id_from_drive_link(drive_link)
             
             if not file_id:
