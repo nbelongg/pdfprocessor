@@ -163,6 +163,10 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
             print(f"Error details:\n{error_details}")
             logger.error(f"Failed to extract hyperlinks from sheet: {e}", exc_info=True)
         
+        # Debug: Show what the dataframe looks like after hyperlink extraction
+        print(f"📋 LOAD_SHEET_DATA: Final dataframe shape: {df.shape}")
+        print(f"📋 LOAD_SHEET_DATA: Column names: {list(df.columns)[:10]}")  # First 10 columns
+        
         return df
         
     except APIError as e:

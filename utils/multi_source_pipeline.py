@@ -112,11 +112,20 @@ def process_multi_source_pipeline(
         # Debug: Log available columns and what we're looking for
         if not sheet_data.empty:
             available_columns = list(sheet_data.columns)
+            print(f"🔍 PIPELINE: Source '{source_info['name']}' - Looking for column '{drive_link_column}'")
+            print(f"🔍 PIPELINE: Available columns: {available_columns}")
+            print(f"🔍 PIPELINE: Sheet data shape: {sheet_data.shape}")
+            
             logger.info(f"Source '{source_info['name']}' - Looking for column '{drive_link_column}'")
             logger.info(f"Available columns: {available_columns}")
             logger.info(f"Sheet data shape: {sheet_data.shape}")
-            logger.info(f"First few values in '{drive_link_column}': {sheet_data[drive_link_column].head(3).tolist() if drive_link_column in sheet_data.columns else 'COLUMN NOT FOUND'}")
-            if drive_link_column not in available_columns:
+            
+            if drive_link_column in sheet_data.columns:
+                first_values = sheet_data[drive_link_column].head(3).tolist()
+                print(f"🔍 PIPELINE: First 3 values in '{drive_link_column}': {first_values}")
+                logger.info(f"First few values in '{drive_link_column}': {first_values}")
+            else:
+                print(f"🔍 PIPELINE: ❌ Drive link column '{drive_link_column}' NOT FOUND!")
                 logger.warning(f"Drive link column '{drive_link_column}' not found in sheet! Available columns: {available_columns}")
         
         source_results = {
