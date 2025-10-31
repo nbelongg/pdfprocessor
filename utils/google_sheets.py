@@ -9,22 +9,23 @@ import gspread
 from gspread.exceptions import APIError, GSpreadException
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 import re
 import socket
 import http.client
+import json
 
 from utils.exceptions import TransientError
 
 
-def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Dict] = None) -> pd.DataFrame:
+def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Union[Dict, str]] = None) -> pd.DataFrame:
     """
     Load data from Google Sheets using service account credentials.
     
     Args:
         sheet_url: Full URL of the Google Sheet
         tab_name: Name of the tab/worksheet to read
-        credentials_dict: Service account credentials as dictionary
+        credentials_dict: Service account credentials as dictionary or JSON string
         
     Returns:
         DataFrame containing the sheet data
@@ -41,6 +42,13 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Di
         ]
         
         if credentials_dict:
+            # Parse JSON string if needed
+            if isinstance(credentials_dict, str):
+                try:
+                    credentials_dict = json.loads(credentials_dict)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON in Google credentials: {e}")
+            
             credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
         else:
             raise ValueError("Google credentials required")
