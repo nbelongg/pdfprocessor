@@ -146,6 +146,10 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                 logger.warning("Sheet data structure unexpected - no sheets or data found")
         except Exception as e:
             # If hyperlink extraction fails, log and continue with display values
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"⚠️ HYPERLINK EXTRACTION FAILED: {e}")
+            print(f"Error details:\n{error_details}")
             logger.error(f"Failed to extract hyperlinks from sheet: {e}", exc_info=True)
         
         return df
