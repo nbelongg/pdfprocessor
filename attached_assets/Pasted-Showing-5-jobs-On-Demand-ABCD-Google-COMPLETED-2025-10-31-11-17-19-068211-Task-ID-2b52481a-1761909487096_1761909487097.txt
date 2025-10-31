@@ -1,0 +1,42 @@
+Showing 5 jobs
+
+✅ On-Demand: ABCD Google - COMPLETED (2025-10-31 11:17:19.068211)
+
+Task ID: 2b52481a-9f9c-4a...
+
+Status: completed
+
+Created: 2025-10-31 11:17:19.068211
+
+📊 View Result
+
+{
+"job_id":"187ab074-0872-4520-b388-a8f07b833f22"
+"details":[
+0:{
+"row":19
+"reason":"No valid Drive link (looking for column "Google Drive Link", value: "Taylor_et_al-2022-Cochrane_Database_of_Systematic_Reviews.pdf", available columns: ['#', 'Paper / Report Title', 'Assignee', 'Added On (Date in DDMMYY)', 'Search String Used', 'Topic (Health, Climate, FI, WASH, Education, Agriculture)', 'Sub-Topic (Vaccines, NTDs, WEE etc)', 'Behaviour', 'Status (Done = 1; Not done = 0)', 'Source Type (Research Paper, Grey Literature, Media Report)', 'Online Link', 'Google Drive Link', 'Author/Organization', 'Publication Year', 'Remove', 'Comments', 'MBS (Marketing and Behavior Science 101)\n', 'GPP (Governance & Public Policy 101)', 'SDSC (Systems Delivery and Supply Chains)', 'LC (Local Context of Behavioural Determinants — Culture, Norms, Attitudes, Perceptions)', 'Analyzer Lenses (Behavior, Text, Image, Audience, Culture, Channel)', 'IID (Intersectional Identities)', 'CSS (Case studies and solutions)', 'DS (Datasets 101)'])"
+"source":"ABCD Google"
+"status":"skipped"
+}
+1:{
+"row":20
+"reason":"No valid Drive link (looking for column "Google Drive Link", value: "acceptance_of_mass_drug_administration_for.8.pdf", available columns: ['#', 'Paper / Report Title', 'Assignee', 'Added On (Date in DDMMYY)', 'Search String Used', 'Topic (Health, Climate, FI, WASH, Education, Agriculture)', 'Sub-Topic (Vaccines, NTDs, WEE etc)', 'Behaviour', 'Status (Done = 1; Not done = 0)', 'Source Type (Research Paper, Grey Literature, Media Report)', 'Online Link', 'Google Drive Link', 'Author/Organization', 'Publication Year', 'Remove', 'Comments', 'MBS (Marketing and Behavior Science 101)\n', 'GPP (Governance & Public Policy 101)', 'SDSC (Systems Delivery and Supply Chains)', 'LC (Local Context of Behavioural Determinants — Culture, Norms, Attitudes, Perceptions)', 'Analyzer Lenses (Behavior, Text, Image, Audience, Culture, Channel)', 'IID (Intersectional Identities)', 'CSS (Case studies and solutions)', 'DS (Datasets 101)'])"
+"source":"ABCD Google"
+"status":"skipped"
+}
+]
+"total_pdfs":0
+"total_chunks":0
+"preview_chunks":NULL
+"vectors_stored":0
+"total_embeddings":0
+"sources_processed":{
+"ABCD Google":{
+"source_id":5
+"source_name":"ABCD Google"
+"chunks_created":0
+"papers_processed":0
+"last_row_processed":0
+}
+}

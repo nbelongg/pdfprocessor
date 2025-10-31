@@ -100,6 +100,8 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
             # Build Sheets API v4 service
             service = build('sheets', 'v4', credentials=credentials, cache_discovery=False)
             
+            logger.info(f"Attempting to extract hyperlinks from sheet '{tab_name}'")
+            
             # Get the worksheet ID
             worksheet_id = worksheet.id
             
@@ -110,6 +112,8 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                 fields='sheets(data(rowData(values(hyperlink,formattedValue))))'
             ).execute()
             
+            logger.info(f"Successfully fetched hyperlink data from API")
+            
             sheets = result.get('sheets', [])
             if sheets and 'data' in sheets[0]:
                 row_data = sheets[0]['data'][0].get('rowData', [])
@@ -117,7 +121,9 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                 # Skip header row, process data rows
                 if len(row_data) > 1:
                     headers = [cell.get('formattedValue', '') for cell in row_data[0].get('values', [])]
+                    logger.info(f"Found {len(headers)} columns: {headers[:5]}...")  # Log first 5 headers
                     
+                    hyperlinks_found = 0
                     for row_idx in range(1, len(row_data)):
                         cells = row_data[row_idx].get('values', [])
                         for col_idx, cell in enumerate(cells):
@@ -130,10 +136,17 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                                     df_row_idx = row_idx - 1  # Adjust for 0-indexed DataFrame
                                     if df_row_idx < len(df):
                                         df.at[df_row_idx, column_name] = hyperlink
+                                        hyperlinks_found += 1
                                         logger.debug(f"Extracted hyperlink for row {df_row_idx}, col '{column_name}': {hyperlink}")
+                    
+                    logger.info(f"Successfully extracted {hyperlinks_found} hyperlinks from sheet")
+                else:
+                    logger.warning("Sheet appears to have no data rows")
+            else:
+                logger.warning("Sheet data structure unexpected - no sheets or data found")
         except Exception as e:
             # If hyperlink extraction fails, log and continue with display values
-            logger.warning(f"Failed to extract hyperlinks from sheet: {e}")
+            logger.error(f"Failed to extract hyperlinks from sheet: {e}", exc_info=True)
         
         return df
         
