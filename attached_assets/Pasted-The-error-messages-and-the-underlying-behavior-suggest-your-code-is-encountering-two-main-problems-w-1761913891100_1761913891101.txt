@@ -1,0 +1,78 @@
+The error messages and the underlying behavior suggest your code is encountering two main problems while processing the “Google Drive Link” column in your Google Sheets for vector indexing:
+
+1. **Cells contain only filenames, not valid Google Drive URLs:**  
+Cells like “just fever.pdf” are being flagged as invalid because they are plain text or display text from a rich text link, not an actual clickable Google Drive hyperlink. Your parser expects a URL but is instead getting a string that looks like a filename.[1][2][3]
+   
+2. **Code error: `'str' object has no attribute 'get'`:**  
+This error occurs when your code assumes every cell value is a dictionary (with a `.get()` method) but some cells are plain strings (no hyperlink metadata). This usually happens if you’re fetching the sheet data using `spreadsheets.values.get`, which returns only strings, or if you’re extracting the cell value incorrectly from the richer grid data structure and not checking its type.[4][5][1]
+
+***
+
+### Why This Is Happening
+
+- Most rows have simple filenames rather than actual hyperlinks. If you’re using `spreadsheets.values.get`, you’ll only see what’s visible in the cell (“just fever.pdf”).
+- Rich text links may not be extracted unless you use the correct API method (`spreadsheets.get` with `includeGridData: true`). Even then, your code must handle cases where no hyperlink is present.
+- Your code is likely written to expect a dictionary for every cell. When it receives a string for a cell (no hyperlink metadata), it tries to call `.get()` and fails.
+
+***
+
+### How To Fix This
+
+#### 1. Validate Data Type Before Extracting Hyperlink
+
+Make sure you’re accessing the cell data from the detailed grid structure (`rowData.values`). For every cell, **check if the value is a dictionary** and has a `'hyperlink'` key:
+
+```python
+# Example for iterating and checking cell value type
+for cell in row_data.get('values', []):
+    if isinstance(cell, dict):
+        link = cell.get('hyperlink')
+        if link:
+            # process the Google Drive link
+        else:
+            # log or skip, as no link present
+    else:
+        # Log reason: "Value is not a dictionary, likely just filename"
+```
+
+#### 2. Use Correct API Endpoint for Rich Text Hyperlinks
+
+- Use `spreadsheets.get` with `includeGridData: true` to get hyperlinks from rich text (UI-inserted) links.[6][4]
+- Within each returned cell, check both the `'hyperlink'` key and the `'formattedValue'`.
+
+#### 3. Sanitize Input Data
+
+- Ensure that every potential Drive link is a valid URL before processing (regex match for `"drive.google.com"`).
+- For plain filenames, record as `skipped`—these are not accessible via Drive API unless mapped elsewhere.
+
+***
+
+### What To Tell Your Development Team
+
+- Switch to processing Sheet data via `spreadsheets.get(includeGridData=True)` not just `values.get`.
+- Update code to always check type before calling `.get()` (`if isinstance(cell, dict)`).
+- Ensure all cells flagged as just filenames are skipped during ingestion, as they are not links and cannot be fetched from Drive.
+- Consider running a pre-processing script to alert users if links are missing or columns are misconfigured.
+- Optionally, provide a UI or Apps Script to force-extract links for any user-uploaded filenames if the real Drive URLs exist (see prior answer for Apps Script snippet).
+
+***
+
+### Typical Causes and Mitigations Table
+
+| Cause                                             | Error Seen                                | Mitigation                                                      |
+|---------------------------------------------------|-------------------------------------------|-----------------------------------------------------------------|
+| Cell is plain text/file name only                  | “No valid Drive link...”                  | Use rich text hyperlinks or add actual Drive URLs               |
+| Code assumes cell is a dict, not string            | “‘str’ object has no attribute 'get'”     | Check type before calling .get(); handle both dict & str cases  |
+| Using `values.get` instead of full grid API        | No hyperlinks present                     | Use `spreadsheets.get(includeGridData=True)`                    |
+| Inconsistent Sheet link formatting                | Skipping/Errors on some rows              | Standardize links in sheet; validate before pipeline run        |
+
+***
+
+By updating your data extraction to be robust to both cell types and using the full grid API, these errors can be eliminated and your pipeline will only process true Google Drive links for vector indexing.[4][6]
+
+[1](https://stackoverflow.com/questions/46879715/get-hyperlink-from-a-cell-in-google-sheet-api-v4)
+[2](https://www.bardeen.ai/answers/how-to-extract-urls-and-links-from-google-sheets)
+[3](https://blog.bettersheets.co/extract-urls-from-google-sheets/)
+[4](https://stackoverflow.com/questions/63838821/how-to-get-hyperlinks-using-google-sheets-api-v4)
+[5](https://www.youtube.com/watch?v=xz6gHEnUmIk)
+[6](https://stackoverflow.com/questions/76063109/how-do-i-read-the-underlying-link-in-a-cell-using-node-and-the-google-sheets-v4)
