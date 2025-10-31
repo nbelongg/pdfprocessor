@@ -146,6 +146,7 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                     
                     cells_with_hyperlinks = 0
                     cells_without_hyperlinks = 0
+                    rows_with_hyperlinks = []  # Track which rows have hyperlinks
                     
                     for row_idx in range(1, len(row_data)):
                         cells = row_data[row_idx].get('values', [])
@@ -155,12 +156,18 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                             cell_data = cells[gdrive_col_idx]
                             if cell_data.get('hyperlink'):
                                 cells_with_hyperlinks += 1
-                                if cells_with_hyperlinks <= 2:  # Show first 2 with hyperlinks
+                                rows_with_hyperlinks.append(row_idx)
+                                if cells_with_hyperlinks <= 2:  # Show first 2 with hyperlinks as examples
                                     print(f"✅ Row {row_idx} HAS hyperlink: {cell_data}")
                             else:
                                 cells_without_hyperlinks += 1
-                                if cells_without_hyperlinks <= 2:  # Show first 2 without hyperlinks
+                                if cells_without_hyperlinks <= 2:  # Show first 2 without hyperlinks as examples
                                     print(f"❌ Row {row_idx} NO hyperlink: {cell_data}")
+                    
+                    print(f"📊 ALL rows with hyperlinks in 'Google Drive Link' column: {rows_with_hyperlinks}")
+                    
+                    for row_idx in range(1, len(row_data)):
+                        cells = row_data[row_idx].get('values', [])
                         
                         for col_idx, cell in enumerate(cells):
                             if col_idx < len(headers) and headers[col_idx]:
