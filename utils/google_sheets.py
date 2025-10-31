@@ -108,21 +108,27 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
             worksheet_id = worksheet.id
             
             # Request cell data including hyperlinks
+            print(f"📋 LOAD_SHEET_DATA: Requesting cell data with hyperlinks...")
             result = service.spreadsheets().get(
                 spreadsheetId=sheet_id,
                 ranges=f'{tab_name}!A:ZZ',
                 fields='sheets(data(rowData(values(hyperlink,formattedValue))))'
             ).execute()
             
+            print(f"📋 LOAD_SHEET_DATA: Successfully fetched hyperlink data from API")
             logger.info(f"Successfully fetched hyperlink data from API")
             
             sheets = result.get('sheets', [])
+            print(f"📋 LOAD_SHEET_DATA: Got {len(sheets)} sheets from result")
+            
             if sheets and 'data' in sheets[0]:
                 row_data = sheets[0]['data'][0].get('rowData', [])
+                print(f"📋 LOAD_SHEET_DATA: Got {len(row_data)} rows of data")
                 
                 # Skip header row, process data rows
                 if len(row_data) > 1:
                     headers = [cell.get('formattedValue', '') for cell in row_data[0].get('values', [])]
+                    print(f"📋 LOAD_SHEET_DATA: Found {len(headers)} columns")
                     logger.info(f"Found {len(headers)} columns: {headers[:5]}...")  # Log first 5 headers
                     
                     hyperlinks_found = 0
@@ -141,10 +147,13 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                                         hyperlinks_found += 1
                                         logger.debug(f"Extracted hyperlink for row {df_row_idx}, col '{column_name}': {hyperlink}")
                     
+                    print(f"📋 LOAD_SHEET_DATA: Successfully extracted {hyperlinks_found} hyperlinks from sheet")
                     logger.info(f"Successfully extracted {hyperlinks_found} hyperlinks from sheet")
                 else:
+                    print(f"📋 LOAD_SHEET_DATA: WARNING - Sheet appears to have no data rows")
                     logger.warning("Sheet appears to have no data rows")
             else:
+                print(f"📋 LOAD_SHEET_DATA: WARNING - Sheet data structure unexpected")
                 logger.warning("Sheet data structure unexpected - no sheets or data found")
         except Exception as e:
             # If hyperlink extraction fails, log and continue with display values
