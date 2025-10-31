@@ -8,7 +8,7 @@ Pattern: All functions use @with_db_error_handling decorator for consistent erro
 """
 import logging
 from typing import List, Dict, Any, Optional
-from utils.db.connection import get_db_connection, get_db_transaction, with_db_error_handling
+from utils.db_utils import get_db_transaction, with_db_error_handling
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ def get_tag_configurations(data_source_id: int) -> List[Dict[str, Any]]:
     Returns:
         List of tag configuration dictionaries
     """
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT 
                 id,
@@ -66,7 +67,8 @@ def save_tag_configuration(
     if extraction_method not in ['header_based', 'value_based']:
         raise ValueError(f"Invalid extraction_method: {extraction_method}")
     
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO tag_configurations (
                 data_source_id,
@@ -122,7 +124,8 @@ def update_tag_configuration(
     
     params.append(config_id)
     
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute(f"""
             UPDATE tag_configurations
             SET {', '.join(updates)}
@@ -140,7 +143,8 @@ def delete_tag_configuration(config_id: int) -> None:
     Args:
         config_id: ID of the tag configuration to delete
     """
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
             DELETE FROM tag_configurations
             WHERE id = %s
@@ -157,7 +161,8 @@ def delete_all_tag_configurations(data_source_id: int) -> None:
     Args:
         data_source_id: ID of the data source
     """
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
             DELETE FROM tag_configurations
             WHERE data_source_id = %s
@@ -178,7 +183,8 @@ def get_tag_configuration_by_id(config_id: int) -> Optional[Dict[str, Any]]:
     Returns:
         Tag configuration dictionary or None if not found
     """
-    with get_db_transaction() as (conn, cursor):
+    with get_db_transaction() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT 
                 id,

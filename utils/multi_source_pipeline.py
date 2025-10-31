@@ -6,7 +6,7 @@ import pandas as pd
 from typing import List, Dict, Callable, Optional
 import uuid
 import logging
-from utils.google_sheets import extract_file_id_from_drive_link
+from utils.google_sheets import extract_file_id_from_drive_link, extract_tags_from_row
 
 logger = logging.getLogger(__name__)
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
@@ -20,6 +20,7 @@ from utils.database import (
     get_data_source, get_column_mapping_dict, get_product, get_product_api_keys,
     update_document_tags, get_document_tags, is_document_tagged
 )
+from utils.db.tag_configs import get_tag_configurations
 from utils.deduplication import check_all_layers, record_or_update_paper
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.config_builder import build_product_config
@@ -230,6 +231,16 @@ def process_multi_source_pipeline(
                         if pd.notna(value):
                             row_metadata[role] = str(value)
                 
+                # Extract tags from spreadsheet columns based on tag configurations
+                spreadsheet_tags = []
+                try:
+                    tag_configs = get_tag_configurations(source_id)
+                    if tag_configs:
+                        spreadsheet_tags = extract_tags_from_row(row, tag_configs, column_mappings)
+                        logger.info(f"Extracted {len(spreadsheet_tags)} tags from spreadsheet: {spreadsheet_tags}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract spreadsheet tags: {str(e)}")
+                
                 # Generate AI tags if enabled in product configuration
                 tagging_enabled = product_config.get('tagging_enabled', False)
                 if tagging_enabled:
@@ -263,14 +274,32 @@ def process_multi_source_pipeline(
                             # Load existing tags
                             validated_tags = get_document_tags(file_id)
                             
-                        # Add tags to row_metadata so they get propagated to chunks
-                        row_metadata['tags'] = validated_tags
+                        # Merge AI tags with spreadsheet tags
+                        all_tags = list(spreadsheet_tags) + list(validated_tags)
+                        # Deduplicate while preserving order
+                        seen = set()
+                        unique_tags = []
+                        for tag in all_tags:
+                            if tag not in seen:
+                                seen.add(tag)
+                                unique_tags.append(tag)
+                        
+                        row_metadata['tags'] = unique_tags
                         row_metadata['auto_generated_tags'] = True
+                        row_metadata['spreadsheet_tags_count'] = len(spreadsheet_tags)
+                        row_metadata['ai_tags_count'] = len(validated_tags)
                         
                     except Exception as e:
                         # Don't fail the entire pipeline if tagging fails
                         logger.warning(f"Tagging failed for {file_metadata.get('name', '')}: {str(e)}")
-                        row_metadata['tags'] = []
+                        # Use spreadsheet tags only if AI tagging fails
+                        row_metadata['tags'] = spreadsheet_tags if spreadsheet_tags else []
+                else:
+                    # If AI tagging is disabled, use spreadsheet tags only
+                    if spreadsheet_tags:
+                        row_metadata['tags'] = spreadsheet_tags
+                        row_metadata['spreadsheet_tags_only'] = True
+                        logger.info(f"Using {len(spreadsheet_tags)} spreadsheet tags (AI tagging disabled)")
                 
                 if progress_callback:
                     progress_callback(
