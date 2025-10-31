@@ -285,6 +285,28 @@ def create_celery_job(task_id: str, task_name: str, source_id: Optional[int] = N
             return job_id
 
 
+def _serialize_for_json(obj):
+    """
+    Recursively convert datetime objects to ISO format strings for JSON serialization.
+    
+    Args:
+        obj: Any object that may contain datetime objects
+        
+    Returns:
+        Object with datetime instances converted to strings
+    """
+    from datetime import datetime, date
+    
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {key: _serialize_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_serialize_for_json(item) for item in obj]
+    else:
+        return obj
+
+
 @with_db_error_handling
 def update_celery_job_status(task_id: str, status: str, **kwargs):
     """Update Celery job status and metadata."""
@@ -304,7 +326,9 @@ def update_celery_job_status(task_id: str, status: str, **kwargs):
                 values.append(kwargs['progress_message'])
             if 'result' in kwargs:
                 set_clauses.append("result = %s")
-                values.append(Json(kwargs['result']))
+                # Serialize datetime objects before JSON encoding
+                serialized_result = _serialize_for_json(kwargs['result'])
+                values.append(Json(serialized_result))
             if 'error_message' in kwargs:
                 set_clauses.append("error_message = %s")
                 values.append(kwargs['error_message'])
