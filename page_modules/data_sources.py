@@ -212,7 +212,25 @@ def _render_add_edit_source():
                 with st.expander("🔍 Show full error details"):
                     st.code(error_trace)
     
+    # In edit mode, pre-populate available columns from existing mappings and tag configs if not already detected
     available_columns = st.session_state.get('detected_columns', [])
+    
+    if edit_mode and not available_columns and st.session_state.get('edit_source_id'):
+        # Extract columns from existing mappings
+        existing_mappings = get_column_mappings(st.session_state.edit_source_id)
+        mapped_columns = [m['column_name'] for m in existing_mappings]
+        
+        # Extract columns from existing tag configurations
+        existing_tag_configs = get_tag_configurations(st.session_state.edit_source_id)
+        tag_columns = [tc['column_name'] for tc in existing_tag_configs if tc.get('column_name')]
+        
+        # Combine all unique columns
+        all_columns = list(set(mapped_columns + tag_columns))
+        available_columns = sorted([col for col in all_columns if col])  # Remove empty strings and sort
+        
+        if available_columns:
+            st.session_state.detected_columns = available_columns
+            st.info(f"📋 Loaded {len(available_columns)} columns from existing configuration")
     
     if available_columns:
         st.info(f"Available columns: {', '.join(available_columns)}")
