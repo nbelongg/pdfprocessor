@@ -314,7 +314,7 @@ def _retry_failed_job(job: Dict):
         # Load sheet data
         sheet_data = load_sheet_data(
             source['sheet_url'],
-            source['sheet_tab_name'],
+            source['sheet_tab'],
             google_credentials
         )
         
@@ -427,7 +427,7 @@ def _render_trigger_processing():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f"**Sheet URL:** {selected_source['sheet_url'][:50]}...")
-        st.markdown(f"**Tab:** {selected_source['sheet_tab_name']}")
+        st.markdown(f"**Tab:** {selected_source['sheet_tab']}")
     with col2:
         st.markdown(f"**Namespace:** {selected_source.get('default_namespace', 'default')}")
         st.markdown(f"**Last Processed Row:** {selected_source.get('last_processed_row', 0)}")
