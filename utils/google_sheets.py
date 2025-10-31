@@ -8,14 +8,19 @@ service account credentials.
 import gspread
 from gspread.exceptions import APIError, GSpreadException
 from oauth2client.service_account import ServiceAccountCredentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import pandas as pd
 from typing import Dict, Optional, List, Union
 import re
 import socket
 import http.client
 import json
+import logging
 
 from utils.exceptions import TransientError
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_url_from_hyperlink_formula(formula: str) -> Optional[str]:
@@ -89,35 +94,46 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Extract hyperlinks from cells
-        # Get all cells with formulas to extract HYPERLINK URLs
+        # Extract hyperlinks from cells using Google Sheets API v4
+        # This handles both HYPERLINK() formulas and regular hyperlinks
         try:
-            # Get the range with formulas
-            all_values = worksheet.get_all_values()
-            if len(all_values) > 1:  # Has header + data
-                headers = all_values[0]
+            # Build Sheets API v4 service
+            service = build('sheets', 'v4', credentials=credentials, cache_discovery=False)
+            
+            # Get the worksheet ID
+            worksheet_id = worksheet.id
+            
+            # Request cell data including hyperlinks
+            result = service.spreadsheets().get(
+                spreadsheetId=sheet_id,
+                ranges=f'{tab_name}!A:ZZ',
+                fields='sheets(data(rowData(values(hyperlink,formattedValue))))'
+            ).execute()
+            
+            sheets = result.get('sheets', [])
+            if sheets and 'data' in sheets[0]:
+                row_data = sheets[0]['data'][0].get('rowData', [])
                 
-                # Get formulas for all cells (returns HYPERLINK formulas)
-                formulas = worksheet.get(return_type='FORMULA')
-                
-                # Process each row starting from row 2 (skip header)
-                for row_idx in range(1, len(formulas)):
-                    for col_idx, cell_formula in enumerate(formulas[row_idx]):
-                        if col_idx < len(headers):
-                            column_name = headers[col_idx]
-                            # Check if this is a HYPERLINK formula
-                            if cell_formula and isinstance(cell_formula, str) and cell_formula.startswith('=HYPERLINK('):
-                                # Extract URL from HYPERLINK("url", "text") formula
-                                url = _extract_url_from_hyperlink_formula(cell_formula)
-                                if url and column_name in df.columns:
-                                    # Update the DataFrame with the actual URL
+                # Skip header row, process data rows
+                if len(row_data) > 1:
+                    headers = [cell.get('formattedValue', '') for cell in row_data[0].get('values', [])]
+                    
+                    for row_idx in range(1, len(row_data)):
+                        cells = row_data[row_idx].get('values', [])
+                        for col_idx, cell in enumerate(cells):
+                            if col_idx < len(headers) and headers[col_idx]:
+                                column_name = headers[col_idx]
+                                hyperlink = cell.get('hyperlink')
+                                
+                                # If cell has a hyperlink, replace the display value with the URL
+                                if hyperlink and column_name in df.columns:
                                     df_row_idx = row_idx - 1  # Adjust for 0-indexed DataFrame
                                     if df_row_idx < len(df):
-                                        df.at[df_row_idx, column_name] = url
+                                        df.at[df_row_idx, column_name] = hyperlink
+                                        logger.debug(f"Extracted hyperlink for row {df_row_idx}, col '{column_name}': {hyperlink}")
         except Exception as e:
-            # If hyperlink extraction fails, just use the display values
-            # This ensures backward compatibility
-            pass
+            # If hyperlink extraction fails, log and continue with display values
+            logger.warning(f"Failed to extract hyperlinks from sheet: {e}")
         
         return df
         
