@@ -18,9 +18,34 @@ import json
 from utils.exceptions import TransientError
 
 
+def _extract_url_from_hyperlink_formula(formula: str) -> Optional[str]:
+    """
+    Extract URL from a HYPERLINK formula.
+    
+    Examples:
+        =HYPERLINK("https://example.com", "text") -> https://example.com
+        =HYPERLINK("https://example.com") -> https://example.com
+    
+    Args:
+        formula: The HYPERLINK formula string
+        
+    Returns:
+        The extracted URL or None if extraction fails
+    """
+    try:
+        # Match HYPERLINK("url"...) or HYPERLINK('url'...)
+        match = re.search(r'=HYPERLINK\s*\(\s*["\']([^"\']+)["\']', formula, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    except:
+        pass
+    return None
+
+
 def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Union[Dict, str]] = None) -> pd.DataFrame:
     """
     Load data from Google Sheets using service account credentials.
+    Extracts hyperlinks from cells that contain HYPERLINK formulas.
     
     Args:
         sheet_url: Full URL of the Google Sheet
@@ -28,7 +53,7 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
         credentials_dict: Service account credentials as dictionary or JSON string
         
     Returns:
-        DataFrame containing the sheet data
+        DataFrame containing the sheet data with hyperlinks extracted
         
     Raises:
         TransientError: For network errors, timeouts, rate limits (retryable)
@@ -60,8 +85,39 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
         
         worksheet = spreadsheet.worksheet(tab_name)
         
+        # Get display values
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
+        
+        # Extract hyperlinks from cells
+        # Get all cells with formulas to extract HYPERLINK URLs
+        try:
+            # Get the range with formulas
+            all_values = worksheet.get_all_values()
+            if len(all_values) > 1:  # Has header + data
+                headers = all_values[0]
+                
+                # Get formulas for all cells (returns HYPERLINK formulas)
+                formulas = worksheet.get(return_type='FORMULA')
+                
+                # Process each row starting from row 2 (skip header)
+                for row_idx in range(1, len(formulas)):
+                    for col_idx, cell_formula in enumerate(formulas[row_idx]):
+                        if col_idx < len(headers):
+                            column_name = headers[col_idx]
+                            # Check if this is a HYPERLINK formula
+                            if cell_formula and isinstance(cell_formula, str) and cell_formula.startswith('=HYPERLINK('):
+                                # Extract URL from HYPERLINK("url", "text") formula
+                                url = _extract_url_from_hyperlink_formula(cell_formula)
+                                if url and column_name in df.columns:
+                                    # Update the DataFrame with the actual URL
+                                    df_row_idx = row_idx - 1  # Adjust for 0-indexed DataFrame
+                                    if df_row_idx < len(df):
+                                        df.at[df_row_idx, column_name] = url
+        except Exception as e:
+            # If hyperlink extraction fails, just use the display values
+            # This ensures backward compatibility
+            pass
         
         return df
         
