@@ -271,14 +271,25 @@ def _render_add_edit_source():
     st.markdown("Configure how to extract tags from spreadsheet columns")
     st.info("📝 Note: This is in addition to any tags from the 'Tags/Keywords' column mapping above. All tags will be combined.")
     
-    # Initialize tag configs in session state
-    if 'tag_configs_temp' not in st.session_state:
-        if edit_mode and st.session_state.get('edit_source_id'):
-            # Load existing tag configs
-            existing_tag_configs = get_tag_configurations(st.session_state.edit_source_id)
+    # Initialize or reload tag configs in session state
+    # Track which source we're editing to reload configs when it changes
+    current_edit_source = st.session_state.get('edit_source_id')
+    last_edit_source = st.session_state.get('last_edit_source_id')
+    
+    # Reload tag configs if:
+    # 1. Not initialized yet, OR
+    # 2. We're in edit mode and the source being edited has changed
+    if ('tag_configs_temp' not in st.session_state or 
+        (edit_mode and current_edit_source != last_edit_source)):
+        if edit_mode and current_edit_source:
+            # Load existing tag configs from database
+            existing_tag_configs = get_tag_configurations(current_edit_source)
             st.session_state.tag_configs_temp = existing_tag_configs
+            st.session_state.last_edit_source_id = current_edit_source
         else:
+            # New source - start with empty configs
             st.session_state.tag_configs_temp = []
+            st.session_state.last_edit_source_id = None
     
     # Add tag column button
     if st.button("➕ Add Tag Column"):
