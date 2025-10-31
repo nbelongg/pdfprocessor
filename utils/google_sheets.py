@@ -132,6 +132,8 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                     logger.info(f"Found {len(headers)} columns: {headers[:5]}...")  # Log first 5 headers
                     
                     hyperlinks_found = 0
+                    hyperlinks_by_column = {}  # Track which columns have hyperlinks
+                    
                     for row_idx in range(1, len(row_data)):
                         cells = row_data[row_idx].get('values', [])
                         for col_idx, cell in enumerate(cells):
@@ -145,7 +147,15 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                                     if df_row_idx < len(df):
                                         df.at[df_row_idx, column_name] = hyperlink
                                         hyperlinks_found += 1
+                                        
+                                        # Track which columns have hyperlinks
+                                        if column_name not in hyperlinks_by_column:
+                                            hyperlinks_by_column[column_name] = 0
+                                        hyperlinks_by_column[column_name] += 1
+                                        
                                         logger.debug(f"Extracted hyperlink for row {df_row_idx}, col '{column_name}': {hyperlink}")
+                    
+                    print(f"📋 LOAD_SHEET_DATA: Hyperlinks found by column: {hyperlinks_by_column}")
                     
                     print(f"📋 LOAD_SHEET_DATA: Successfully extracted {hyperlinks_found} hyperlinks from sheet")
                     logger.info(f"Successfully extracted {hyperlinks_found} hyperlinks from sheet")
