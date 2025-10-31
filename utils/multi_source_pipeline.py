@@ -152,13 +152,14 @@ def process_multi_source_pipeline(
                 
                 row = sheet_data.iloc[idx]
                 
-                drive_link = row.get(drive_link_column, '')
+                # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
+                drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
                 file_id = extract_file_id_from_drive_link(drive_link)
                 
                 if not file_id:
                     # Add debug info to help diagnose the issue
                     available_cols = list(sheet_data.columns)
-                    drive_link_value = row.get(drive_link_column, '<NOT FOUND>')
+                    drive_link_value = row[drive_link_column] if drive_link_column in row else '<NOT FOUND>'
                     
                     # Also check if value looks like a URL vs filename
                     value_analysis = "LOOKS LIKE FILENAME" if (isinstance(drive_link_value, str) and drive_link_value.endswith('.pdf')) else "UNKNOWN FORMAT"
@@ -173,8 +174,12 @@ def process_multi_source_pipeline(
                     })
                     continue
                 
-                paper_title = row.get(column_mappings.get('paper_title', ''), '') if column_mappings.get('paper_title') else ''
-                authors = row.get(column_mappings.get('authors', ''), '') if column_mappings.get('authors') else ''
+                # Access pandas Series using bracket notation for metadata columns
+                paper_title_col = column_mappings.get('paper_title', '')
+                paper_title = row[paper_title_col] if paper_title_col and paper_title_col in row and pd.notna(row[paper_title_col]) else ''
+                
+                authors_col = column_mappings.get('authors', '')
+                authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
                 
                 dedup_result = None
                 if not preview_mode:
