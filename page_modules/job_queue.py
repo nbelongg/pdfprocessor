@@ -18,7 +18,7 @@ from utils.db.jobs import (
     update_celery_job_status, cancel_celery_job
 )
 from utils.db.sources import get_data_sources, get_data_source
-from utils.db.products import get_products
+from utils.db.products import get_products, get_product_api_keys
 from utils.db.scheduling import get_all_scheduled_jobs, get_scheduled_job_runs
 from utils.google_sheets import load_sheet_data
 from utils.config_builder import get_product_config_from_source
@@ -284,6 +284,7 @@ def _render_job_card(job: Dict):
 
 def _retry_failed_job(job: Dict):
     """Retry a failed job by re-triggering processing for its source."""
+    retry_job_id = None  # Initialize for error handling
     try:
         source_id = job.get('source_id')
         
@@ -379,6 +380,19 @@ def _retry_failed_job(job: Dict):
         st.rerun()
         
     except Exception as e:
+        # Update job status to failed if job was created
+        if retry_job_id is not None:
+            try:
+                from utils.db.jobs import update_celery_job_status
+                update_celery_job_status(
+                    retry_job_id,
+                    'failed',
+                    error=str(e)
+                )
+            except:
+                pass  # Don't fail the error response if we can't update status
+        
+        logger.exception(f"Error retrying job: {e}")
         error_message(f"❌ Error retrying job: {str(e)}")
         st.exception(e)
 
@@ -535,6 +549,7 @@ def _trigger_processing_job(
     selected_rows: Optional[List[int]] = None
 ) -> Dict:
     """Trigger an on-demand processing job."""
+    job_id = None  # Initialize for error handling
     try:
         # Get product-based credentials
         product_id = source.get('product_id')
@@ -615,11 +630,24 @@ def _trigger_processing_job(
         
         return {
             'success': True,
-            'job_id': results.get('job_id'),
+            'job_id': job_id,
             'paper_count': len(rows_to_process)
         }
         
     except Exception as e:
+        # Update job status to failed if job was created
+        if job_id is not None:
+            try:
+                from utils.db.jobs import update_celery_job_status
+                update_celery_job_status(
+                    job_id,
+                    'failed',
+                    error=str(e)
+                )
+            except:
+                pass  # Don't fail the error response if we can't update status
+        
+        logger.exception(f"Error triggering processing job: {e}")
         return {'success': False, 'error': str(e)}
 
 
