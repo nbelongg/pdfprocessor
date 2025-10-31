@@ -44,6 +44,14 @@ def render():
 
 def _render_view_sources():
     """Render the view sources tab."""
+    # If in edit mode, show the edit form at the top
+    if 'edit_source_id' in st.session_state:
+        st.info("💡 Editing mode active - scroll down or switch to 'Add/Edit Source' tab to edit the form")
+        if st.button("❌ Cancel Edit"):
+            del st.session_state.edit_source_id
+            st.rerun()
+        st.markdown("---")
+    
     st.subheader("Existing Data Sources")
     
     if refresh_button("refresh_sources"):
