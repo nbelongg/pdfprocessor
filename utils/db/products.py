@@ -230,6 +230,15 @@ def get_product_api_keys(product_id: int) -> Dict:
             # Get actual value from environment using the secret name
             actual_value = os.getenv(secret_name, '')
             if actual_value:
-                api_keys[env_key] = actual_value
+                # Special handling for Google credentials - parse JSON string to dict
+                if env_key == 'GOOGLE_CREDENTIALS':
+                    try:
+                        import json
+                        api_keys[env_key] = json.loads(actual_value)
+                    except json.JSONDecodeError:
+                        # If it's already a dict or invalid JSON, use as-is
+                        api_keys[env_key] = actual_value
+                else:
+                    api_keys[env_key] = actual_value
     
     return api_keys
