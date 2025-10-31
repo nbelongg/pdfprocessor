@@ -39,10 +39,8 @@ def get_tag_configurations(data_source_id: int) -> List[Dict[str, Any]]:
             ORDER BY id
         """, (data_source_id,))
         
-        columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
-        
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(row) for row in rows]
 
 
 @with_db_error_handling
@@ -80,7 +78,7 @@ def save_tag_configuration(
             RETURNING id
         """, (data_source_id, column_name, extraction_method, trigger_value))
         
-        tag_config_id = cursor.fetchone()[0]
+        tag_config_id = cursor.fetchone()['id']
         logger.info(f"Created tag configuration {tag_config_id} for data source {data_source_id}")
         return tag_config_id
 
@@ -201,5 +199,4 @@ def get_tag_configuration_by_id(config_id: int) -> Optional[Dict[str, Any]]:
         if not row:
             return None
         
-        columns = [desc[0] for desc in cursor.description]
-        return dict(zip(columns, row))
+        return dict(row)
