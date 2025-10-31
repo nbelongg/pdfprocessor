@@ -17,6 +17,10 @@ from utils.database import (
     get_products, get_scheduled_job, get_product_api_keys,
     update_scheduled_job_run_time
 )
+from utils.db.tag_configs import (
+    get_tag_configurations, save_tag_configuration, 
+    delete_all_tag_configurations
+)
 from utils.google_sheets import load_sheet_data
 from datetime import datetime, timedelta
 import pandas as pd
@@ -254,6 +258,96 @@ def _render_add_edit_source():
     
     st.markdown("---")
     
+    # Tag Extraction Configuration Section
+    st.subheader("🏷️ Tag Extraction Configuration")
+    st.markdown("Configure how to extract tags from spreadsheet columns")
+    st.info("📝 Note: This is in addition to any tags from the 'Tags/Keywords' column mapping above. All tags will be combined.")
+    
+    # Initialize tag configs in session state
+    if 'tag_configs_temp' not in st.session_state:
+        if edit_mode and st.session_state.get('edit_source_id'):
+            # Load existing tag configs
+            existing_tag_configs = get_tag_configurations(st.session_state.edit_source_id)
+            st.session_state.tag_configs_temp = existing_tag_configs
+        else:
+            st.session_state.tag_configs_temp = []
+    
+    # Add tag column button
+    if st.button("➕ Add Tag Column"):
+        st.session_state.tag_configs_temp.append({
+            'id': None,
+            'column_name': '',
+            'extraction_method': 'header_based',
+            'trigger_value': '1'
+        })
+        st.rerun()
+    
+    # Render each tag configuration
+    tag_configs_to_remove = []
+    for idx, tag_config in enumerate(st.session_state.tag_configs_temp):
+        with st.expander(f"🏷️ Tag Column #{idx + 1}", expanded=True):
+            col_remove = st.columns([4, 1])
+            
+            with col_remove[1]:
+                if st.button("🗑️ Remove", key=f"remove_tag_{idx}"):
+                    tag_configs_to_remove.append(idx)
+            
+            # Column name selection
+            tag_column_options = [""] + available_columns
+            current_col = tag_config.get('column_name', '')
+            
+            selected_tag_column = st.selectbox(
+                "Column Name",
+                options=tag_column_options,
+                index=tag_column_options.index(current_col) if current_col in tag_column_options else 0,
+                key=f"tag_col_{idx}",
+                help="Select the spreadsheet column to extract tags from"
+            )
+            
+            tag_config['column_name'] = selected_tag_column
+            
+            # Extraction method
+            extraction_methods = ['header_based', 'value_based']
+            method_labels = {
+                'header_based': 'Header as Tag (Binary Flag)',
+                'value_based': 'Value as Tag (Direct Value)'
+            }
+            
+            current_method = tag_config.get('extraction_method', 'header_based')
+            
+            selected_method = st.radio(
+                "Extraction Method",
+                options=extraction_methods,
+                index=extraction_methods.index(current_method) if current_method in extraction_methods else 0,
+                format_func=lambda x: method_labels[x],
+                key=f"tag_method_{idx}",
+                horizontal=True
+            )
+            
+            tag_config['extraction_method'] = selected_method
+            
+            # Trigger value (only for header_based)
+            if selected_method == 'header_based':
+                trigger_val = st.text_input(
+                    "Trigger Value",
+                    value=tag_config.get('trigger_value', '1'),
+                    key=f"tag_trigger_{idx}",
+                    help=f"If cell value equals this, use column header \"{selected_tag_column or '[Column]'}\" as the tag"
+                )
+                tag_config['trigger_value'] = trigger_val
+                
+                st.caption(f"💡 Example: If cell = \"{trigger_val}\" → tag will be \"{selected_tag_column or '[Column Name]'}\"")
+            else:
+                st.caption(f"💡 Example: If cell = \"Computer Vision\" → tag will be \"Computer Vision\"")
+                st.caption("📝 Comma-separated values will be split into multiple tags")
+    
+    # Remove marked tag configs
+    for idx in reversed(tag_configs_to_remove):
+        st.session_state.tag_configs_temp.pop(idx)
+        st.rerun()
+    
+    st.markdown("---")
+    
     col_save, col_cancel = st.columns(2)
     
     with col_save:
@@ -288,6 +382,19 @@ def _render_add_edit_source():
                         is_req = role == 'drive_link'
                         save_column_mapping(source_id, role, column, is_req)
                     
+                    # Save tag configurations
+                    delete_all_tag_configurations(source_id)
+                    if st.session_state.get('tag_configs_temp'):
+                        for tag_config in st.session_state.tag_configs_temp:
+                            column_name = tag_config.get('column_name', '').strip()
+                            if column_name:  # Only save if column name is provided
+                                save_tag_configuration(
+                                    data_source_id=source_id,
+                                    column_name=column_name,
+                                    extraction_method=tag_config.get('extraction_method', 'header_based'),
+                                    trigger_value=tag_config.get('trigger_value', '1')
+                                )
+                    
                     st.success(f"✅ {'Updated' if edit_mode else 'Created'} data source: {source_name}")
                     
                     if 'edit_source_id' in st.session_state:
@@ -296,6 +403,8 @@ def _render_add_edit_source():
                         del st.session_state.detected_columns
                     if 'column_mappings_temp' in st.session_state:
                         del st.session_state.column_mappings_temp
+                    if 'tag_configs_temp' in st.session_state:
+                        del st.session_state.tag_configs_temp
                     
                     st.session_state.data_sources = get_data_sources()
                     st.rerun()
@@ -309,6 +418,8 @@ def _render_add_edit_source():
                 del st.session_state.edit_source_id
             if 'detected_columns' in st.session_state:
                 del st.session_state.detected_columns
+            if 'tag_configs_temp' in st.session_state:
+                del st.session_state.tag_configs_temp
             st.rerun()
 
 
