@@ -109,6 +109,14 @@ def process_multi_source_pipeline(
         drive_link_column = column_mappings.get('drive_link', 'Drive Link')
         default_namespace = source_info['default_namespace']
         
+        # Debug: Log available columns and what we're looking for
+        if not sheet_data.empty:
+            available_columns = list(sheet_data.columns)
+            logger.info(f"Source '{source_info['name']}' - Looking for column '{drive_link_column}'")
+            logger.info(f"Available columns: {available_columns}")
+            if drive_link_column not in available_columns:
+                logger.warning(f"Drive link column '{drive_link_column}' not found in sheet! Available columns: {available_columns}")
+        
         source_results = {
             'source_id': source_id,
             'source_name': source_info['name'],
