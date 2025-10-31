@@ -1,0 +1,456 @@
+## Understanding the Problem: Hyperlink Detection in Google Sheets
+
+When you have Google Drive file links displayed in Google Sheets cells, there are **two fundamentally different ways** hyperlinks can be stored, and this determines how your application can access them:
+
+### The Two Types of Hyperlinks in Google Sheets
+
+**1. Formula-based Hyperlinks (`=HYPERLINK()` function)**[1][2][3]
+- Created using: `=HYPERLINK("URL", "Display Text")`
+- These are stored as formulas in the cell
+- Can be retrieved using `spreadsheets.values.get` with `valueRenderOption: 'FORMULA'`
+- Easy to extract programmatically
+
+**2. Rich Text Hyperlinks (Ctrl+K / Command+K or Insert Link UI)**[2][4][5][6]
+- Created by: Highlighting text → Right-click → "Insert link" OR using Ctrl+K/Command+K
+- Stored as **rich text formatting metadata**, not as a formula
+- The cell formula bar shows only the display text, not the URL
+- **Cannot** be retrieved using standard `spreadsheets.values.get` method
+- Requires `spreadsheets.get` with `includeGridData: true` parameter
+
+Based on your description ("the hyperlink to the google drive location is there but the filename.pdf is showing up in the cell"), you're dealing with **Rich Text Hyperlinks** (Type 2).
+
+---
+
+## Why Your Application Can't Detect the Links
+
+Your application is likely using the **Google Sheets API `spreadsheets.values.get`** method, which retrieves only:
+- Cell values (displayed text)
+- Formulas (if you set `valueRenderOption: 'FORMULA'`)
+
+This method **does NOT** retrieve rich text formatting metadata, which includes hyperlinks created via Ctrl+K. That's why you're seeing only "filename.pdf" and not the underlying Google Drive URL.[4][5][6][2]
+
+***
+
+## The Solution: Using `spreadsheets.get` with Grid Data
+
+To programmatically access rich text hyperlinks, you need to use the **`spreadsheets.get`** method with the `includeGridData: true` parameter.[5][6][7][2][4]
+
+### API Structure for Extracting Hyperlinks
+
+Here's what you need to know about the API structure:
+
+#### **Method**: `spreadsheets.get`
+- **Endpoint**: `GET https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}`
+- **Key Parameters**:
+  - `spreadsheetId`: Your Google Sheet ID
+  - `ranges`: Specific ranges to retrieve (e.g., "Sheet1!A1:B10")
+  - `includeGridData`: Must be set to **`true`**
+  - `fields`: Field mask to filter response (optional but recommended for performance)
+
+#### **Response Structure for Hyperlinks**
+
+When `includeGridData: true` is set, the API returns detailed cell metadata:[2][4][5]
+
+```json
+{
+  "sheets": [{
+    "data": [{
+      "rowData": [{
+        "values": [{
+          "formattedValue": "filename.pdf",  // Display text
+          "hyperlink": "https://drive.google.com/file/d/FILE_ID/view"  // The actual URL!
+        }]
+      }]
+    }]
+  }]
+}
+```
+
+The **`hyperlink`** property contains the actual URL that was set via Ctrl+K.[5][2]
+
+***
+
+## Implementation Instructions for Your Development Team
+
+### For Python (Using `google-api-python-client`)
+
+Here's the exact code structure your team should implement:
+
+```python
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+
+# Setup credentials (adjust based on your auth method)
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+credentials = service_account.Credentials.from_service_account_file(
+    'path/to/credentials.json', scopes=SCOPES
+)
+
+# Build the service
+service = build('sheets', 'v4', credentials=credentials)
+
+# Your spreadsheet details
+SPREADSHEET_ID = 'your_spreadsheet_id'
+RANGE_NAME = 'Sheet1!A1:B100'  # Adjust to your range
+
+# Make the API call with includeGridData=True
+request = service.spreadsheets().get(
+    spreadsheetId=SPREADSHEET_ID,
+    ranges=[RANGE_NAME],
+    includeGridData=True,
+    fields='sheets/data/rowData/values(formattedValue,hyperlink)'  # Optimize response
+)
+
+response = request.execute()
+
+# Parse the response to extract hyperlinks
+sheets = response.get('sheets', [])
+for sheet in sheets:
+    for data in sheet.get('data', []):
+        for row_data in data.get('rowData', []):
+            for cell in row_data.get('values', []):
+                display_text = cell.get('formattedValue', '')
+                hyperlink = cell.get('hyperlink', None)
+                
+                if hyperlink:
+                    print(f"Display: {display_text}")
+                    print(f"URL: {hyperlink}")
+                    # Extract Google Drive file ID if needed
+                    if 'drive.google.com' in hyperlink:
+                        file_id = extract_drive_file_id(hyperlink)
+                        print(f"File ID: {file_id}")
+```
+
+#### Helper Function to Extract Google Drive File ID
+
+Since you need to access the actual Google Drive files for vector indexing, here's how to extract the file ID from the Drive URL:
+
+```python
+import re
+
+def extract_drive_file_id(url):
+    """
+    Extract Google Drive file ID from various URL formats
+    """
+    # Pattern 1: /d/FILE_ID/ format
+    pattern1 = r'/d/([a-zA-Z0-9-_]+)'
+    match = re.search(pattern1, url)
+    if match:
+        return match.group(1)
+    
+    # Pattern 2: id=FILE_ID format
+    pattern2 = r'id=([a-zA-Z0-9-_]+)'
+    match = re.search(pattern2, url)
+    if match:
+        return match.group(1)
+    
+    return None
+
+# Once you have the file_id, access the file via Drive API:
+from googleapiclient.discovery import build
+
+drive_service = build('drive', 'v3', credentials=credentials)
+file_metadata = drive_service.files().get(fileId=file_id, fields='id,name,mimeType,webViewLink').execute()
+
+# Download the file for vector processing
+request = drive_service.files().get_media(fileId=file_id)
+# ... continue with your vector indexing pipeline
+```
+
+### For Node.js (Using `googleapis`)
+
+```javascript
+const {google} = require('googleapis');
+const sheets = google.sheets('v4');
+
+async function getHyperlinks(auth) {
+  const spreadsheetId = 'your_spreadsheet_id';
+  const range = 'Sheet1!A1:B100';
+  
+  const response = await sheets.spreadsheets.get({
+    auth: auth,
+    spreadsheetId: spreadsheetId,
+    ranges: [range],
+    includeGridData: true,
+    fields: 'sheets/data/rowData/values(formattedValue,hyperlink)'
+  });
+  
+  const sheetData = response.data.sheets[0].data[0];
+  const rows = sheetData.rowData || [];
+  
+  rows.forEach((row, rowIndex) => {
+    const cells = row.values || [];
+    cells.forEach((cell, colIndex) => {
+      const displayText = cell.formattedValue || '';
+      const hyperlink = cell.hyperlink;
+      
+      if (hyperlink) {
+        console.log(`Cell [${rowIndex},${colIndex}]: ${displayText} -> ${hyperlink}`);
+        
+        // Extract Drive file ID
+        const fileId = extractDriveFileId(hyperlink);
+        if (fileId) {
+          console.log(`File ID: ${fileId}`);
+        }
+      }
+    });
+  });
+}
+
+function extractDriveFileId(url) {
+  const match1 = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match1) return match1[1];
+  
+  const match2 = url.match(/id=([a-zA-Z0-9-_]+)/);
+  if (match2) return match2[1];
+  
+  return null;
+}
+```
+
+***
+
+## Important Considerations for Vector Indexing Applications
+
+Since you mentioned this is for a **vector indexing application**:
+
+### 1. **Performance Optimization**[8]
+
+Using `includeGridData: true` returns **much more data** than `values.get`:
+- **Use the `fields` parameter** to limit the response to only what you need
+- For large sheets, **request specific ranges** rather than entire sheets
+- Consider **batching** your requests if processing multiple sheets
+
+**Optimized fields parameter**:
+```python
+fields='sheets/data/rowData/values(formattedValue,hyperlink)'
+```
+
+### 2. **Handling Multiple File Types**[9][8]
+
+For vector indexing, you'll need to:
+- Extract the file ID from the Drive URL
+- Use the **Google Drive API** to get file metadata (MIME type, size)
+- Download the file content based on file type
+- Process PDFs, Docs, Sheets differently for chunking
+
+### 3. **Metadata for Vector Database**[8]
+
+Store metadata alongside vectors:
+- Original filename (from `formattedValue`)
+- Google Drive file ID
+- Direct link to file (the `hyperlink` URL)
+- File type/MIME type
+- Last modified timestamp (from Drive API)
+- Sheet cell reference (for traceability)
+
+### 4. **Namespace and Permission Management**[8]
+
+For multi-tenant applications:
+- Use vector database **namespaces** per tenant
+- Store Google Drive file IDs in metadata for permission checks
+- Consider implementing **pre-retrieval or post-retrieval permission filtering**
+
+---
+
+## Alternative: Google Apps Script Solution (For Sheet Owners)
+
+If your team has control over the Google Sheet, you can create a helper column that extracts URLs automatically using Apps Script:[10][7][11]
+
+```javascript
+/**
+ * Custom function to extract hyperlink from rich text cell
+ * Usage: =GETLINK("A1")
+ */
+function GETLINK(cellRef) {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const cell = sheet.getRange(cellRef);
+  const richText = cell.getRichTextValue();
+  return richText.getLinkUrl() || '';
+}
+
+/**
+ * Batch function to extract all links from a column
+ */
+function extractAllLinks() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const range = sheet.getRange('A2:A100'); // Adjust range
+  const richTextValues = range.getRichTextValues();
+  
+  const links = richTextValues.map(row => 
+    row.map(cell => [cell.getLinkUrl() || ''])
+  );
+  
+  // Write to adjacent column
+  sheet.getRange(2, 2, links.length, 1).setValues(links);
+}
+```
+
+However, this approach requires **manual intervention** and doesn't scale well for automated pipelines.
+
+---
+
+## Step-by-Step Action Plan for Your Development Team
+
+### **Phase 1: Update API Implementation**
+1. Replace `spreadsheets.values.get` calls with `spreadsheets.get`
+2. Add `includeGridData: true` parameter
+3. Add `fields` parameter for performance optimization
+4. Update parsing logic to extract `hyperlink` property from cell metadata
+
+### **Phase 2: Integrate Drive API**
+1. Enable Google Drive API in your Google Cloud Console
+2. Add Drive API scopes to your credentials
+3. Implement file ID extraction from Drive URLs
+4. Use Drive API to get file metadata and download content
+
+### **Phase 3: Handle Edge Cases**
+1. Check for cells without hyperlinks (`hyperlink` property will be `null`)
+2. Handle different Drive URL formats (sharing links, folder links, etc.)
+3. Implement error handling for inaccessible files
+4. Add logging for debugging
+
+### **Phase 4: Optimize for Production**
+1. Implement rate limiting (Sheets API quota: 100 requests per 100 seconds per user)[12]
+2. Add caching layer to avoid repeated API calls
+3. Use batch requests where possible
+4. Monitor API usage and costs
+
+---
+
+## Testing Approach
+
+### **Step 1: Create Test Sheet**
+Create a test Google Sheet with:
+- Row 1: Formula hyperlink using `=HYPERLINK()`
+- Row 2: Rich text hyperlink (Ctrl+K)
+- Row 3: Plain text (no hyperlink)
+- Row 4: Multiple hyperlinks in one cell (if needed)
+
+### **Step 2: Test API Calls**
+Run your implementation against the test sheet and verify:
+- Formula hyperlinks are detected
+- Rich text hyperlinks are detected
+- File IDs are correctly extracted
+- Null checks work for plain text cells
+
+### **Step 3: Integration Test**
+- Test with actual Google Drive PDF files
+- Verify file download works
+- Test vector indexing pipeline end-to-end
+
+---
+
+## Common Pitfalls to Avoid
+
+1. **Using `spreadsheets.values.get` for rich text links** → Won't work[6][4][2]
+2. **Forgetting `includeGridData: true`** → Hyperlinks won't be returned[2][5]
+3. **Not using `fields` parameter** → Response will be huge and slow[5]
+4. **Assuming all cells have hyperlinks** → Always check for `null`[5]
+5. **Not handling Drive URL format variations** → Use regex patterns[13][14]
+6. **Exceeding API quotas** → Implement rate limiting and caching[12]
+
+---
+
+## Summary: What to Tell Your Development Team
+
+**The Issue**: Your application uses `spreadsheets.values.get`, which cannot retrieve hyperlinks created via Ctrl+K (rich text formatting).
+
+**The Solution**: Switch to `spreadsheets.get` with `includeGridData: true` and parse the `hyperlink` property from cell metadata.
+
+**The Implementation**:
+- Use `spreadsheets.get` method
+- Set `includeGridData: true`
+- Specify `ranges` for the cells containing file links
+- Use `fields` parameter to optimize: `'sheets/data/rowData/values(formattedValue,hyperlink)'`
+- Parse response to extract `hyperlink` property
+- Extract Google Drive file ID using regex
+- Use Drive API to access the actual file
+
+**Performance Tip**: The `includeGridData` approach returns much more data, so always use the `fields` parameter to limit the response and request specific ranges rather than entire sheets.
+
+This approach will give you programmatic access to the Google Drive links so you can download the files and process them for your vector indexing pipeline.[15][9][8]
+
+[1](https://productivesheets.com/extract-url-from-hyperlink-google-sheets/)
+[2](https://stackoverflow.com/questions/46879715/get-hyperlink-from-a-cell-in-google-sheet-api-v4)
+[3](https://www.thebricks.com/resources/guide-how-to-extract-links-from-google-sheets)
+[4](https://stackoverflow.com/questions/76063109/how-do-i-read-the-underlying-link-in-a-cell-using-node-and-the-google-sheets-v4)
+[5](https://github.com/googleapis/google-api-php-client/issues/2475)
+[6](https://stackoverflow.com/questions/70221198/google-sheets-api-strips-out-links)
+[7](https://stackoverflow.com/questions/63838821/how-to-get-hyperlinks-using-google-sheets-api-v4)
+[8](https://www.useparagon.com/learn/what-to-know-about-ingesting-google-drive-data-for-rag/)
+[9](https://n8n.io/workflows/3647-transform-google-drive-documents-into-vector-embeddings/)
+[10](https://spreadsheet.dev/add-links-to-a-cell-in-google-sheets-using-apps-script)
+[11](https://www.labnol.org/code/google-sheets-hyperlinks-2006232/)
+[12](https://developers.google.com/workspace/sheets/api/samples/reading)
+[13](https://docs.meiro.io/books/meiro-integrations/page/where-can-i-find-the-file-id-on-google-drive)
+[14](https://stackoverflow.com/questions/16840038/easiest-way-to-get-file-id-from-url-on-google-apps-script)
+[15](https://n8n.io/workflows/4552-index-documents-from-google-drive-to-pinecone-with-openai-embeddings-for-rag/)
+[16](https://www.reddit.com/r/googlesheets/comments/143w71s/how_do_i_extract_the_url_from_hyperlinked_text/)
+[17](https://stackoverflow.com/questions/67088278/google-script-to-retrieve-google-drive-documents-hyperlink-to-be-set-in-a-google)
+[18](https://excelinsider.com/google-sheets-basics/linking/extract-url-from-hyperlink/)
+[19](https://support.google.com/docs/thread/146001060/how-to-get-a-filenames-and-urls-from-google-drive-to-a-sheet?hl=en)
+[20](https://www.bardeen.ai/answers/how-to-extract-urls-and-links-from-google-sheets)
+[21](https://www.liveflow.com/product-guides/hyperlink-function-in-google-sheets)
+[22](https://support.google.com/docs/thread/252991880?hl=en&msgid=253010145)
+[23](https://blog.bettersheets.co/extract-urls-from-google-sheets/)
+[24](https://www.reddit.com/r/googlesheets/comments/ta13xb/accessing_hyperlink_in_google_sheets_cell_using/)
+[25](https://www.reddit.com/r/googlesheets/comments/1gb7vv2/is_there_any_efficient_way_to_get_all_file/)
+[26](https://www.youtube.com/watch?v=zEUQtvquJe0)
+[27](https://support.google.com/docs/answer/3093313?hl=en)
+[28](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/get)
+[29](https://spreadsheetpoint.com/extract-url-from-hyperlink-google-sheets/)
+[30](https://www.youtube.com/watch?v=pWo-EVUp7iQ)
+[31](https://stackoverflow.com/questions/66919103/how-to-rw-to-google-sheets-via-url-with-python)
+[32](https://github.com/kelseyhightower/dns01-exec-plugins/blob/master/googledns/vendor/google.golang.org/api/sheets/v4/sheets-api.json)
+[33](https://www.youtube.com/watch?v=npZu0apdS9A)
+[34](https://www.youtube.com/watch?v=bEEzKvkj0nI)
+[35](https://www.datacamp.com/tutorial/how-to-analyze-data-in-google-sheets-with-python-a-step-by-step-guide)
+[36](https://hexdocs.pm/google_api_sheets/GoogleApi.Sheets.V4.Api.Spreadsheets.html)
+[37](https://www.reddit.com/r/nocode/comments/1l1isv6/appfromgooglesheets_service_that_preserves_rich/)
+[38](https://github.com/neogeek13/g-sheets-to-python)
+[39](https://stackoverflow.com/questions/9690138/how-do-i-access-read-write-google-sheets-spreadsheets-with-python)
+[40](https://gist.github.com/tanaikech/b18c0189a5d0266a849090fdbe6750a5)
+[41](https://developers.google.com/workspace/sheets/api/quickstart/python?hl=th)
+[42](https://googleapis.dev/nodejs/googleapis/latest/sheets/interfaces/Params$Resource$Spreadsheets$Get.html)
+[43](https://stackoverflow.com/questions/62358484/how-to-make-a-function-to-extract-the-new-rich-text-links-in-google-sheets-while)
+[44](https://developers.google.com/workspace/drive/api/guides/search-files)
+[45](https://stackoverflow.com/questions/59293839/how-can-i-download-a-file-by-name-from-google-drive-api)
+[46](https://stackoverflow.com/questions/67528532/with-google-drive-api-how-do-i-find-a-filename-that-contains-a-string-of-digits)
+[47](https://community.airtable.com/formulas-10/extracting-google-docs-id-from-url-34965)
+[48](https://docs.cloud.google.com/bigquery/docs/vector-index)
+[49](https://discuss.google.dev/t/google-drive-files-list-api-query-with-contains-keyword/97177)
+[50](https://stackoverflow.com/questions/78480623/how-to-retrieve-a-google-drive-file-link-in-google-sheets-based-on-a-filename-in)
+[51](https://vectorize.io/blog/build-better-ai-applications-with-google-drive-and-vectorize)
+[52](https://www.c-sharpcorner.com/article/how-to-search-google-drive-files-progamatically/)
+[53](https://community.make.com/t/get-google-drive-file-id-from-its-url/8164)
+[54](https://www.googlecloudcommunity.com/gc/Workspace-Q-A/Google-Drive-Files-list-API-query-with-quot-contains-quot/m-p/491668)
+[55](https://discuss.google.dev/t/get-a-google-drive-file-id-for-an-image-after-it-is-taken-through-the-app/85555/6)
+[56](https://stackoverflow.com/questions/29964215/how-to-get-google-drive-file-details-into-spreadsheet)
+[57](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
+[58](https://www.youtube.com/watch?v=lKcmghfEOTM)
+[59](https://www.youtube.com/watch?v=xz6gHEnUmIk)
+[60](https://endgrate.com/blog/using-the-google-sheets-api-to-get-records-(with-python-examples))
+[61](https://osric.com/chris/accidental-developer/2024/04/extracting-links-from-google-sheets/)
+[62](https://www.reddit.com/r/GoogleAppsScript/comments/pcxka9/extracting_url_from_richtext_cell_and_excepion/)
+[63](https://stackoverflow.com/questions/74453720/how-to-extract-a-portion-of-this-url-in-google-sheets)
+[64](https://www.python-engineer.com/posts/google-sheets-api/)
+[65](https://developers.google.com/workspace/sheets/api/quickstart/python)
+[66](https://stackoverflow.com/questions/64767184/how-to-read-a-link-from-a-cell-in-google-spreadsheet-if-its-inside-href-tag-gs)
+[67](https://stackoverflow.com/questions/76374394/how-extract-multiplelinks-from-single-cell-googlesheets)
+[68](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get)
+[69](https://dev.to/seattledataguy/automating-data-extractions-from-google-sheets-with-python-4nia)
+[70](https://github.com/burnash/gspread)
+[71](https://hackernoon.com/how-to-use-the-google-sheets-api-with-python)
+[72](https://tanaikech.github.io/2022/10/27/putting-multiple-hyperlinks-to-a-cell-using-sheets-api-with-google-apps-script-and-node.js/)
+[73](https://community.n8n.io/t/read-hyperlink-from-google-sheet/101167)
+[74](https://formulashq.com/hyperlink-google-sheet-formulas-explained/)
+[75](https://stackoverflow.com/questions/77310503/how-to-add-multiple-hyperlinks-in-a-single-cell-in-google-sheets-using-python)
+[76](https://www.reddit.com/r/googlesheets/comments/1260cv9/hyperlink_cell_attribute_and_links_to_other/)
+[77](https://docs.gspread.org/en/latest/api/models/spreadsheet.html)
+[78](https://stackoverflow.com/questions/64874341/getting-hyperlink-from-cell-in-google-sheets-api-python)
+[79](https://developers.google.com/workspace/sheets/api/samples/formatting)
+[80](https://googleapis.github.io/google-api-python-client/docs/dyn/sheets_v4.spreadsheets.html)
+[81](https://groups.google.com/g/python-excel/c/ODQvunP6NsU)
+[82](https://gist.github.com/tanaikech/4c27bf8d1948a5dfa5b0e53ce88c6d30)
+[83](https://developers.google.com/resources/api-libraries/documentation/sheets/v4/python/latest/sheets_v4.spreadsheets.html)
