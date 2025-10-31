@@ -37,8 +37,20 @@ def create_embeddings(nodes: List[BaseNode], config: Dict) -> List[List[float]]:
     embed_model = create_embedding_model(config)
     
     embeddings = []
-    for node in nodes:
-        embedding = embed_model.get_text_embedding(node.get_content())
+    for idx, node in enumerate(nodes):
+        content = node.get_content()
+        
+        # Validate content before sending to API
+        if not content or not content.strip():
+            raise ValueError(f"Node {idx} has empty or whitespace-only content")
+        
+        if not isinstance(content, str):
+            raise ValueError(f"Node {idx} content is not a string: {type(content)}")
+        
+        # Log first few characters for debugging
+        print(f"🔤 Embedding node {idx}: content length={len(content)}, first 100 chars: {content[:100]}")
+        
+        embedding = embed_model.get_text_embedding(content)
         embeddings.append(embedding)
     
     return embeddings
