@@ -216,18 +216,26 @@ def extract_file_id_from_drive_link(drive_link: str) -> Optional[str]:
     if not drive_link or pd.isna(drive_link):
         return None
     
+    # Debug: log what we're trying to extract
+    print(f"🔗 EXTRACTING FILE ID from: {drive_link[:100]}")
+    
     patterns = [
-        r'/file/d/([a-zA-Z0-9-_]+)',
-        r'id=([a-zA-Z0-9-_]+)',
-        r'/open\?id=([a-zA-Z0-9-_]+)',
-        r'^([a-zA-Z0-9-_]{25,})$'
+        r'/file/d/([a-zA-Z0-9-_]+)',  # /file/d/ID/...
+        r'id=([a-zA-Z0-9-_]+)',  # ?id=ID
+        r'/open\?id=([a-zA-Z0-9-_]+)',  # /open?id=ID
+        r'/folders/([a-zA-Z0-9-_]+)',  # /folders/ID (folder links)
+        r'/view\?usp=([a-zA-Z0-9-_]+)',  # /view?usp=ID
+        r'^([a-zA-Z0-9-_]{25,})$'  # Raw ID (25+ chars)
     ]
     
     for pattern in patterns:
         match = re.search(pattern, str(drive_link))
         if match:
-            return match.group(1)
+            file_id = match.group(1)
+            print(f"✅ EXTRACTED FILE ID: {file_id}")
+            return file_id
     
+    print(f"❌ NO FILE ID FOUND in URL: {drive_link}")
     return None
 
 
