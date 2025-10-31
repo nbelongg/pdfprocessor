@@ -141,11 +141,14 @@ def process_multi_source_pipeline(
                 file_id = extract_file_id_from_drive_link(drive_link)
                 
                 if not file_id:
+                    # Add debug info to help diagnose the issue
+                    available_cols = list(sheet_data.columns)
+                    drive_link_value = row.get(drive_link_column, '<NOT FOUND>')
                     results['details'].append({
                         'source': source_info['name'],
                         'row': idx,
                         'status': 'skipped',
-                        'reason': 'No valid Drive link'
+                        'reason': f'No valid Drive link (looking for column "{drive_link_column}", value: "{drive_link_value}", available columns: {available_cols})'
                     })
                     continue
                 
