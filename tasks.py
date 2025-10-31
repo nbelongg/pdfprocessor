@@ -386,43 +386,56 @@ def process_batch_task(
         async_tasks = []
         
         for idx, row_idx in enumerate(selected_indices):
-            row = sheet_data.iloc[row_idx]
-            
-            # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
-            drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
-            file_id = extract_file_id_from_drive_link(drive_link)
-            
-            if not file_id:
+            try:
+                row = sheet_data.iloc[row_idx]
+                
+                # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
+                drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
+                file_id = extract_file_id_from_drive_link(drive_link)
+                
+                if not file_id:
+                    results['details'].append({
+                        'row': row_idx,
+                        'status': 'skipped',
+                        'reason': 'No valid Drive link found'
+                    })
+                    continue
+                
+                row_metadata = {
+                    'file_id': file_id,
+                    'filename': '',
+                    'drive_link': drive_link
+                }
+                
+                logger.info(f"DEBUG: metadata_columns type: {type(metadata_columns)}, value: {metadata_columns}")
+                
+                for col in metadata_columns:
+                    if col in row:
+                        row_metadata[col] = str(row[col]) if pd.notna(row[col]) else ""
+                
+                namespace = default_namespace
+                if namespace_column and namespace_column in row and pd.notna(row[namespace_column]):
+                    namespace = str(row[namespace_column])
+                
+                logger.info(f"DEBUG: row_metadata type: {type(row_metadata)}, keys: {row_metadata.keys()}")
+                
+                # Submit task asynchronously
+                pdf_result = process_pdf_task.apply_async(args=[
+                    file_id,
+                    row_metadata.get('filename', f'file_{file_id}.pdf'),
+                    row_metadata,
+                    product_config,
+                    job_id,
+                    namespace
+                ])
+            except Exception as e:
+                logger.error(f"Error processing row {row_idx}: {str(e)}\n{traceback.format_exc()}")
                 results['details'].append({
                     'row': row_idx,
-                    'status': 'skipped',
-                    'reason': 'No valid Drive link found'
+                    'status': 'error',
+                    'error': str(e)
                 })
                 continue
-            
-            row_metadata = {
-                'file_id': file_id,
-                'filename': '',
-                'drive_link': drive_link
-            }
-            
-            for col in metadata_columns:
-                if col in row:
-                    row_metadata[col] = str(row[col]) if pd.notna(row[col]) else ""
-            
-            namespace = default_namespace
-            if namespace_column and namespace_column in row and pd.notna(row[namespace_column]):
-                namespace = str(row[namespace_column])
-            
-            # Submit task asynchronously
-            pdf_result = process_pdf_task.apply_async(args=[
-                file_id,
-                row_metadata.get('filename', f'file_{file_id}.pdf'),
-                row_metadata,
-                product_config,
-                job_id,
-                namespace
-            ])
             
             async_tasks.append({
                 'task': pdf_result,
