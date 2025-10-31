@@ -96,10 +96,12 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
         
         # Extract hyperlinks from cells using Google Sheets API v4
         # This handles both HYPERLINK() formulas and regular hyperlinks
+        print(f"📋 LOAD_SHEET_DATA: Starting hyperlink extraction for tab '{tab_name}'")
         try:
             # Build Sheets API v4 service
             service = build('sheets', 'v4', credentials=credentials, cache_discovery=False)
             
+            print(f"📋 LOAD_SHEET_DATA: Built Sheets API v4 service")
             logger.info(f"Attempting to extract hyperlinks from sheet '{tab_name}'")
             
             # Get the worksheet ID
