@@ -62,8 +62,6 @@ def parse_pdf_with_llamaparse(
             result_type=config.get('result_type', 'markdown'),
             parsing_instruction=config.get('parsing_instruction', ''),
             language=config.get('language', 'en'),
-            use_vendor_multimodal_model=config.get('use_vendor_multimodal', True),
-            vendor_multimodal_model_name=config.get('vendor_multimodal_model_name', 'anthropic-sonnet-4'),
             page_separator=config.get('page_separator', '\n---\n')
         )
         
