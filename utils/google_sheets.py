@@ -137,20 +137,30 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                     hyperlinks_found = 0
                     hyperlinks_by_column = {}  # Track which columns have hyperlinks
                     
-                    # Debug: log first few cells from Google Drive Link column to see what we're getting
+                    # Debug: log cells from Google Drive Link column to see what we're getting
                     gdrive_col_idx = None
                     for idx, h in enumerate(headers):
                         if h == 'Google Drive Link':
                             gdrive_col_idx = idx
                             break
                     
+                    cells_with_hyperlinks = 0
+                    cells_without_hyperlinks = 0
+                    
                     for row_idx in range(1, len(row_data)):
                         cells = row_data[row_idx].get('values', [])
                         
-                        # Debug first few rows of Google Drive Link column
-                        if gdrive_col_idx is not None and row_idx <= 3 and gdrive_col_idx < len(cells):
+                        # Debug Google Drive Link column - show cells WITH and WITHOUT hyperlinks
+                        if gdrive_col_idx is not None and gdrive_col_idx < len(cells):
                             cell_data = cells[gdrive_col_idx]
-                            print(f"🔍 Row {row_idx} Google Drive Link cell data: {cell_data}")
+                            if cell_data.get('hyperlink'):
+                                cells_with_hyperlinks += 1
+                                if cells_with_hyperlinks <= 2:  # Show first 2 with hyperlinks
+                                    print(f"✅ Row {row_idx} HAS hyperlink: {cell_data}")
+                            else:
+                                cells_without_hyperlinks += 1
+                                if cells_without_hyperlinks <= 2:  # Show first 2 without hyperlinks
+                                    print(f"❌ Row {row_idx} NO hyperlink: {cell_data}")
                         
                         for col_idx, cell in enumerate(cells):
                             if col_idx < len(headers) and headers[col_idx]:
@@ -175,6 +185,7 @@ def load_sheet_data(sheet_url: str, tab_name: str, credentials_dict: Optional[Un
                                         
                                         logger.debug(f"Extracted hyperlink for row {df_row_idx}, col '{column_name}': {hyperlink}")
                     
+                    print(f"📊 Google Drive Link column: {cells_with_hyperlinks} cells WITH hyperlinks, {cells_without_hyperlinks} cells WITHOUT")
                     print(f"📋 LOAD_SHEET_DATA: Hyperlinks found by column: {hyperlinks_by_column}")
                     
                     print(f"📋 LOAD_SHEET_DATA: Successfully extracted {hyperlinks_found} hyperlinks from sheet")
