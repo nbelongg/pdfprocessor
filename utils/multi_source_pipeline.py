@@ -114,6 +114,8 @@ def process_multi_source_pipeline(
             available_columns = list(sheet_data.columns)
             logger.info(f"Source '{source_info['name']}' - Looking for column '{drive_link_column}'")
             logger.info(f"Available columns: {available_columns}")
+            logger.info(f"Sheet data shape: {sheet_data.shape}")
+            logger.info(f"First few values in '{drive_link_column}': {sheet_data[drive_link_column].head(3).tolist() if drive_link_column in sheet_data.columns else 'COLUMN NOT FOUND'}")
             if drive_link_column not in available_columns:
                 logger.warning(f"Drive link column '{drive_link_column}' not found in sheet! Available columns: {available_columns}")
         
@@ -144,11 +146,17 @@ def process_multi_source_pipeline(
                     # Add debug info to help diagnose the issue
                     available_cols = list(sheet_data.columns)
                     drive_link_value = row.get(drive_link_column, '<NOT FOUND>')
+                    
+                    # Also check if value looks like a URL vs filename
+                    value_analysis = "LOOKS LIKE FILENAME" if (isinstance(drive_link_value, str) and drive_link_value.endswith('.pdf')) else "UNKNOWN FORMAT"
+                    if isinstance(drive_link_value, str) and 'drive.google.com' in drive_link_value:
+                        value_analysis = "LOOKS LIKE URL (but file_id extraction failed)"
+                    
                     results['details'].append({
                         'source': source_info['name'],
                         'row': idx,
                         'status': 'skipped',
-                        'reason': f'No valid Drive link (looking for column "{drive_link_column}", value: "{drive_link_value}", available columns: {available_cols})'
+                        'reason': f'No valid Drive link ({value_analysis}). Column: "{drive_link_column}", Value: "{str(drive_link_value)[:100]}"'
                     })
                     continue
                 
