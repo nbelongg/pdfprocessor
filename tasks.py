@@ -40,6 +40,11 @@ from utils.database import (
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.exceptions import TransientError
 from utils.config_builder import build_product_config
+from utils.monitoring import (
+    track_api_cost, calculate_llamaparse_cost, calculate_openai_embedding_cost,
+    estimate_tokens_from_text, update_job_runtime, save_to_failed_queue
+)
+from datetime import datetime
 
 
 # ============================================
@@ -172,7 +177,14 @@ def process_pdf_task(
     Returns:
         Dictionary with processing results
     """
+    # Track runtime
+    start_time = time.time()
+    started_at = datetime.now()
+    
     try:
+        # Update job start time
+        update_job_runtime(job_id, started_at=started_at)
+        
         self.update_progress(PROGRESS_DOWNLOAD, 100, f"Downloading {filename}...")
         
         pdf_content = call_with_retry(
@@ -188,6 +200,23 @@ def process_pdf_task(
         parsed_text = call_with_retry(
             lambda: parse_pdf_with_llamaparse(pdf_content, filename, config)
         )
+        
+        # Track LlamaParse costs
+        num_pages = file_metadata.get('num_pages', 0)
+        if num_pages > 0:
+            llamaparse_cost = calculate_llamaparse_cost(num_pages)
+            track_api_cost(
+                job_id=job_id,
+                service='llamaparse',
+                units=num_pages,
+                cost_usd=llamaparse_cost,
+                details={
+                    'filename': filename,
+                    'file_id': file_id,
+                    'parsing_mode': config.get('parsing_mode', 'auto'),
+                    'result_type': config.get('result_type', 'markdown')
+                }
+            )
         
         # Save the expensive parsed text for future re-processing
         save_parsed_document(
@@ -261,6 +290,23 @@ def process_pdf_task(
             lambda: create_embeddings(nodes, config)
         )
         
+        # Track OpenAI embedding costs
+        total_tokens = sum(estimate_tokens_from_text(node.get_content()) for node in nodes)
+        embedding_cost = calculate_openai_embedding_cost(total_tokens)
+        track_api_cost(
+            job_id=job_id,
+            service='openai_embeddings',
+            units=total_tokens,
+            cost_usd=embedding_cost,
+            details={
+                'filename': filename,
+                'file_id': file_id,
+                'num_chunks': len(nodes),
+                'embedding_model': config.get('embedding_model', 'text-embedding-3-small'),
+                'embedding_dimension': config.get('embedding_dimension', 1536)
+            }
+        )
+        
         self.update_progress(PROGRESS_UPLOAD, 100, f"Uploading {filename} to Pinecone...")
         
         pinecone_index = initialize_pinecone(config)
@@ -291,26 +337,61 @@ def process_pdf_task(
         
         self.update_progress(PROGRESS_COMPLETE, 100, f"Completed {filename}")
         
+        # Track runtime
+        processing_time = int(time.time() - start_time)
+        completed_at = datetime.now()
+        update_job_runtime(
+            job_id=job_id,
+            completed_at=completed_at,
+            processing_time_seconds=processing_time
+        )
+        
         return {
             'status': 'success',
             'file_id': file_id,
             'filename': filename,
             'chunks': len(nodes),
-            'vectors_uploaded': vectors_uploaded
+            'vectors_uploaded': vectors_uploaded,
+            'processing_time_seconds': processing_time
         }
         
     except Exception as e:
         error_msg = f"Error processing {filename}: {str(e)}"
         logger.error(f"{error_msg}\n{traceback.format_exc()}")
         
+        # Track failed runtime
+        processing_time = int(time.time() - start_time)
+        update_job_runtime(
+            job_id=job_id,
+            completed_at=datetime.now(),
+            processing_time_seconds=processing_time
+        )
+        
         try:
             raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
         except self.MaxRetriesExceededError:
+            # Save to dead letter queue after max retries
+            save_to_failed_queue(
+                task_id=self.request.id,
+                job_id=job_id,
+                task_name='process_pdf_task',
+                error_message=traceback.format_exc(),
+                error_type=type(e).__name__,
+                task_args={
+                    'file_id': file_id,
+                    'filename': filename,
+                    'job_id': job_id,
+                    'namespace': namespace
+                },
+                retry_count=CELERY_MAX_RETRIES
+            )
+            
             return {
                 'status': 'error',
                 'file_id': file_id,
                 'filename': filename,
-                'error': f"Max retries exceeded: {str(e)}"
+                'error': f"Max retries exceeded: {str(e)}",
+                'processing_time_seconds': processing_time
             }
 
 

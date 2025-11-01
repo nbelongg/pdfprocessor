@@ -5,6 +5,10 @@ Streamlined refactored version with modular page architecture.
 import os
 import streamlit as st
 
+# Initialize Sentry for error tracking
+from utils.sentry_config import init_sentry
+init_sentry()
+
 # Import configuration
 from config.constants import (
     APP_TITLE, APP_ICON, APP_PASSWORD, PAGES, PAGE_ORDER
@@ -12,7 +16,7 @@ from config.constants import (
 
 # Import page modules
 from page_modules import home, products, data_sources, select_files, preview
-from page_modules import process, job_queue, status, history, search
+from page_modules import process, job_queue, monitoring, status, history, search
 
 # Import database utilities for sidebar stats
 from utils.database import get_products, get_data_sources
@@ -128,6 +132,7 @@ PAGE_RENDERERS = {
     "preview": preview.render,
     "process": process.render,
     "job_queue": job_queue.render,
+    "monitoring": monitoring.render_monitoring_page,
     "status": status.render,
     "history": history.render,
     "search": search.render

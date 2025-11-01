@@ -15,6 +15,10 @@ import logging
 from celery import Celery
 from kombu import Queue
 
+# Initialize Sentry for error tracking in Celery workers
+from utils.sentry_config import init_sentry
+init_sentry()
+
 
 # ============================================
 # LOGGING SETUP

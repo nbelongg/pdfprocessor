@@ -30,14 +30,15 @@ PAGES = {
     "products": Page("🏢", "Products", "products"),
     "data_sources": Page("📚", "Data Sources", "data_sources"),
     "job_queue": Page("⚙️", "Job Management", "job_queue"),
-    "status": Page("📊", "Status", "status"),
+    "monitoring": Page("📊", "Monitoring & Costs", "monitoring"),
+    "status": Page("📈", "Status", "status"),
     "history": Page("📜", "History", "history"),
     "search": Page("🔍", "Search Test", "search"),
 }
 
 # Page order for navigation
 PAGE_ORDER = [
-    "home", "products", "data_sources", "job_queue", "status", "history", "search"
+    "home", "products", "data_sources", "job_queue", "monitoring", "status", "history", "search"
 ]
 
 # ============================================
