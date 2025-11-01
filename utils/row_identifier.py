@@ -213,7 +213,7 @@ def get_unprocessed_row_indices(
     sheet_data: pd.DataFrame,
     column_mappings: Dict[str, str],
     processed_identifiers: set,
-    max_papers: int = None
+    max_papers: Optional[int] = None
 ) -> list:
     """
     Find indices of unprocessed rows in a Google Sheet.
