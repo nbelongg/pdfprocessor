@@ -62,7 +62,7 @@ def generate_content_hash(title: str = '', authors: str = '', year: str = '', ur
     Generate a content hash from paper metadata fields.
     
     Uses SHA256 hash of concatenated fields: title|authors|year|url
-    Returns first 16 characters of hex digest for brevity.
+    Returns full 64-character hex digest to match existing deduplication system.
     
     Args:
         title: Paper title
@@ -71,11 +71,15 @@ def generate_content_hash(title: str = '', authors: str = '', year: str = '', ur
         url: Paper URL or DOI
         
     Returns:
-        16-character hash string
+        64-character SHA256 hash string (full hex digest)
         
     Examples:
         >>> generate_content_hash('Neural Networks', 'Smith et al', '2024', 'arxiv.org/123')
-        'a1b2c3d4e5f6g7h8'
+        'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2'
+        
+    Note:
+        Returns full 64-character digest to match stored hashes in processed_papers table.
+        This ensures compatibility with existing deduplication records.
     """
     # Normalize fields (strip whitespace, lowercase)
     fields = [
@@ -92,8 +96,8 @@ def generate_content_hash(title: str = '', authors: str = '', year: str = '', ur
     hash_obj = hashlib.sha256(hash_input.encode('utf-8'))
     hash_hex = hash_obj.hexdigest()
     
-    # Return first 16 characters
-    return hash_hex[:16]
+    # Return full 64-character digest
+    return hash_hex
 
 
 def extract_row_identifier(
@@ -185,9 +189,9 @@ def extract_all_row_identifiers(
         
     Example:
         {
-            0: '1a2b3c4d5e6f7g',      # Row 0: Drive File ID
-            1: 'abc123def456',         # Row 1: Content hash
-            5: '9h8g7f6e5d4c3b'        # Row 5: Another ID (rows 2-4 were empty)
+            0: '1a2b3c4d5e6f7g',                                                   # Row 0: Drive File ID
+            1: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2',  # Row 1: Content hash (64 chars)
+            5: '9h8g7f6e5d4c3b'                                                    # Row 5: Another ID
         }
     """
     identifiers = {}
