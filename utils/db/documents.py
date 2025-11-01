@@ -306,3 +306,48 @@ def get_deduplication_stats() -> Dict:
             }
     finally:
         conn.close()
+
+
+def get_processed_identifiers_for_source(source_id: int) -> set:
+    """
+    Get all Drive File IDs and content hashes already processed for this source.
+    
+    This enables hash-based detection of new papers regardless of their position
+    in the Google Sheet (handles mid-sheet insertions, reordering, etc.)
+    
+    Args:
+        source_id: Data source ID
+        
+    Returns:
+        Set of identifier strings (both drive_file_ids and content_hashes)
+        
+    Example:
+        {'1a2b3c4d5e6f7g', '8h9i0j1k2l3m4n', 'abc123def456...'}
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Get all paper_ids for this source from mapping table
+            cur.execute(
+                """
+                SELECT DISTINCT p.drive_file_id, p.content_hash
+                FROM processed_papers p
+                INNER JOIN source_paper_mapping spm ON p.id = spm.paper_id
+                WHERE spm.source_id = %s
+                """,
+                (source_id,)
+            )
+            
+            identifiers = set()
+            for row in cur.fetchall():
+                # Add drive_file_id if present
+                if row['drive_file_id']:
+                    identifiers.add(row['drive_file_id'])
+                # Add content_hash if present
+                if row['content_hash']:
+                    identifiers.add(row['content_hash'])
+            
+            logger.info(f"Found {len(identifiers)} processed identifiers for source {source_id}")
+            return identifiers
+    finally:
+        conn.close()
