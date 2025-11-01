@@ -170,6 +170,7 @@ def update_product(
                 'default_embedding_model', 'active',
                 'parsing_mode', 'result_type', 'language',
                 'use_vendor_multimodal', 'page_separator',
+                'num_workers', 'page_error_tolerance',
                 'chunk_overlap', 'semantic_buffer_size',
                 'pinecone_environment', 'default_namespace',
                 'embedding_dimension', 'tagging_enabled',
