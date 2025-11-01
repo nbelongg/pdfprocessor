@@ -37,10 +37,10 @@ def create_data_source(name: str, sheet_url: str, sheet_tab: str, topic: Optiona
             return result['id'] if result else None
 
 
+@with_db_error_handling
 def get_data_sources(active_only: bool = False) -> List[Dict[str, Any]]:
     """Get all data sources."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             if active_only:
                 cur.execute(
@@ -51,22 +51,18 @@ def get_data_sources(active_only: bool = False) -> List[Dict[str, Any]]:
                     "SELECT * FROM data_sources ORDER BY name"
                 )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_data_source(source_id: int) -> Optional[Dict[str, Any]]:
     """Get a specific data source by ID."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM data_sources WHERE id = %s",
                 (source_id,)
             )
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -134,18 +130,16 @@ def save_column_mapping(source_id: int, column_role: str, column_name: str, is_r
             )
 
 
+@with_db_error_handling
 def get_column_mappings(source_id: int) -> List[Dict[str, Any]]:
     """Get all column mappings for a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM column_mappings WHERE source_id = %s ORDER BY column_role",
                 (source_id,)
             )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 @with_db_error_handling

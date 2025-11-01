@@ -83,10 +83,10 @@ def update_job_status(job_id: str, status: str, **kwargs):
             )
 
 
+@with_db_error_handling
 def get_job_history(limit: int = 50) -> List[Dict[str, Any]]:
     """Get processing job history."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -101,14 +101,12 @@ def get_job_history(limit: int = 50) -> List[Dict[str, Any]]:
                 (limit,)
             )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_job_details(job_id: str) -> Optional[Dict[str, Any]]:
     """Get detailed information about a specific job."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -117,8 +115,6 @@ def get_job_details(job_id: str) -> Optional[Dict[str, Any]]:
                 (job_id,)
             )
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -158,10 +154,10 @@ def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
                 )
 
 
+@with_db_error_handling
 def get_job_chunks(job_id: str) -> List[Dict[str, Any]]:
     """Get all chunks for a specific job."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -172,8 +168,6 @@ def get_job_chunks(job_id: str) -> List[Dict[str, Any]]:
                 (job_id,)
             )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -209,17 +203,15 @@ def save_metadata_transformation(name: str, description: str, rules: Dict):
             )
 
 
+@with_db_error_handling
 def get_metadata_transformations() -> List[Dict[str, Any]]:
     """Get all metadata transformations."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM metadata_transformations ORDER BY name"
             )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -343,24 +335,22 @@ def update_celery_job_status(task_id: str, status: str, **kwargs):
             )
 
 
+@with_db_error_handling
 def get_celery_job(task_id: str) -> Optional[Dict]:
     """Get a Celery job by task ID."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM celery_jobs WHERE task_id = %s",
                 (task_id,)
             )
             return cur.fetchone()
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_all_celery_jobs(limit: int = 100, status_filter: Optional[str] = None) -> List[Dict]:
     """Get all Celery jobs with optional status filter."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             if status_filter:
                 cur.execute(
@@ -382,8 +372,6 @@ def get_all_celery_jobs(limit: int = 100, status_filter: Optional[str] = None) -
                     (limit,)
                 )
             return cur.fetchall()
-    finally:
-        conn.close()
 
 
 def cancel_celery_job(task_id: str):
