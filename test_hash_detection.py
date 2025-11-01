@@ -15,6 +15,7 @@ from utils.row_identifier import (
     extract_row_identifier,
     get_unprocessed_row_indices
 )
+from utils.deduplication import generate_content_hash as dedup_generate_content_hash
 
 
 def test_drive_file_id_extraction():
@@ -47,19 +48,15 @@ def test_content_hash_generation():
     """Test content hash generation from metadata."""
     print("Testing content hash generation...")
     
-    # Same content should produce same hash
+    # Same content should produce same hash (title + authors only)
     hash1 = generate_content_hash(
         title="Neural Networks in AI",
-        authors="Smith et al",
-        year="2024",
-        url="https://arxiv.org/abs/1234"
+        authors="Smith et al"
     )
     
     hash2 = generate_content_hash(
         title="Neural Networks in AI",
-        authors="Smith et al",
-        year="2024",
-        url="https://arxiv.org/abs/1234"
+        authors="Smith et al"
     )
     
     if hash1 == hash2:
@@ -71,9 +68,7 @@ def test_content_hash_generation():
     # Different content should produce different hash
     hash3 = generate_content_hash(
         title="Different Paper",
-        authors="Jones et al",
-        year="2024",
-        url="https://arxiv.org/abs/5678"
+        authors="Jones et al"
     )
     
     if hash1 != hash3:
@@ -100,17 +95,18 @@ def test_row_identifier_extraction():
     
     # Create test data
     test_data = {
-        'Title': ['Paper A', 'Paper B', 'Paper C', '', 'Paper E'],
-        'Authors': ['Smith et al', 'Jones et al', 'Brown et al', 'Wilson et al', 'Davis et al'],
-        'Year': ['2024', '2023', '2024', '2022', '2024'],
+        'Title': ['Paper A', 'Paper B', 'Paper C', '', 'Paper E', ''],
+        'Authors': ['Smith et al', 'Jones et al', 'Brown et al', 'Wilson et al', 'Davis et al', ''],
+        'Year': ['2024', '2023', '2024', '2022', '2024', '2023'],
         'PDF Link': [
             'https://drive.google.com/file/d/FILE_ID_1/view',
             '',  # No drive link - should use content hash
             'https://drive.google.com/file/d/FILE_ID_3/view',
-            '',  # Empty row
-            'https://drive.google.com/file/d/FILE_ID_5/view'
+            '',  # Has authors, no title - should use content hash
+            'https://drive.google.com/file/d/FILE_ID_5/view',
+            ''   # Truly empty row (no title, no authors)
         ],
-        'URL': ['url1', 'url2', 'url3', '', 'url5']
+        'URL': ['url1', 'url2', 'url3', '', 'url5', '']
     }
     
     df = pd.DataFrame(test_data)
@@ -144,14 +140,23 @@ def test_row_identifier_extraction():
     else:
         print(f"  ✗ Row 1: Failed to generate content hash")
     
-    # Test row 3: Empty row should return None
+    # Test row 3: Has authors but no title - should still generate hash
     total += 1
     id3 = extract_row_identifier(df.iloc[3], column_mappings)
-    if id3 is None:
-        print(f"  ✓ Row 3: Empty row returns None")
+    if id3 and id3 not in ['FILE_ID_1', 'FILE_ID_3']:
+        print(f"  ✓ Row 3: Generated hash from authors only: {id3[:16]}...")
         passed += 1
     else:
-        print(f"  ✗ Row 3: Expected None for empty row, got {id3}")
+        print(f"  ✗ Row 3: Expected content hash, got {id3}")
+    
+    # Test row 5: Truly empty row (no title, no authors) should return None
+    total += 1
+    id5 = extract_row_identifier(df.iloc[5], column_mappings)
+    if id5 is None:
+        print(f"  ✓ Row 5: Empty row returns None")
+        passed += 1
+    else:
+        print(f"  ✗ Row 5: Expected None for empty row, got {id5}")
     
     print(f"  Result: {passed}/{total} tests passed\n")
     return passed == total
@@ -228,6 +233,39 @@ def test_unprocessed_detection():
     return True
 
 
+def test_backward_compatibility():
+    """Test that hash function matches existing deduplication system."""
+    print("Testing backward compatibility with deduplication.py...")
+    
+    test_cases = [
+        ("Neural Networks in AI", "Smith et al"),
+        ("Machine Learning", "Jones et al"),
+        ("Deep Learning Survey", "Brown, Davis, Wilson"),
+        ("", "Author Only"),  # Empty title
+        ("Title Only", ""),   # Empty authors
+        ("", ""),            # Both empty
+    ]
+    
+    passed = 0
+    for title, authors in test_cases:
+        # Generate hash using new row_identifier module
+        new_hash = generate_content_hash(title=title, authors=authors)
+        
+        # Generate hash using existing deduplication module
+        dedup_hash = dedup_generate_content_hash(paper_title=title, authors=authors)
+        
+        if new_hash == dedup_hash:
+            print(f"  ✓ Match: '{title[:30]}...' + '{authors[:20]}...'")
+            passed += 1
+        else:
+            print(f"  ✗ Mismatch for '{title}' + '{authors}':")
+            print(f"    New:   {new_hash}")
+            print(f"    Dedup: {dedup_hash}")
+    
+    print(f"  Result: {passed}/{len(test_cases)} test cases matched\n")
+    return passed == len(test_cases)
+
+
 def run_all_tests():
     """Run all tests."""
     print("="*60)
@@ -239,6 +277,7 @@ def run_all_tests():
     # Run tests
     results.append(("Drive File ID Extraction", test_drive_file_id_extraction()))
     results.append(("Content Hash Generation", test_content_hash_generation()))
+    results.append(("Backward Compatibility", test_backward_compatibility()))
     results.append(("Row Identifier Extraction", test_row_identifier_extraction()))
     results.append(("Unprocessed Paper Detection", test_unprocessed_detection()))
     

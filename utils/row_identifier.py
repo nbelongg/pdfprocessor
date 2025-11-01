@@ -7,7 +7,11 @@ regardless of their position (handles mid-sheet insertions, reordering, etc.)
 
 Identifier Strategy:
 1. Primary: Google Drive File ID (stable, unique)
-2. Fallback: Content hash (title + authors + year + url)
+2. Fallback: Content hash (title + authors ONLY)
+
+IMPORTANT: The content hash uses ONLY title and authors to maintain backward compatibility
+with the existing deduplication system in utils/deduplication.py. Year and URL are intentionally
+excluded to ensure legacy processed_papers records are matched correctly.
 """
 
 import hashlib
@@ -57,47 +61,41 @@ def extract_drive_file_id(drive_link: str) -> Optional[str]:
     return None
 
 
-def generate_content_hash(title: str = '', authors: str = '', year: str = '', url: str = '') -> str:
+def generate_content_hash(title: str = '', authors: str = '') -> str:
     """
     Generate a content hash from paper metadata fields.
     
-    Uses SHA256 hash of concatenated fields: title|authors|year|url
-    Returns full 64-character hex digest to match existing deduplication system.
+    IMPORTANT: Uses ONLY title and authors to match existing deduplication system.
+    This ensures backward compatibility with processed_papers table records.
+    
+    Uses SHA256 hash of: title|authors
+    Returns full 64-character hex digest.
     
     Args:
         title: Paper title
         authors: Authors string
-        year: Publication year
-        url: Paper URL or DOI
         
     Returns:
         64-character SHA256 hash string (full hex digest)
         
     Examples:
-        >>> generate_content_hash('Neural Networks', 'Smith et al', '2024', 'arxiv.org/123')
-        'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2'
+        >>> generate_content_hash('Neural Networks', 'Smith et al')
+        'f77b3c6ef3ef84b6647029dbb0b238b975993590f0780c23e1efea187e8bb517'
         
     Note:
-        Returns full 64-character digest to match stored hashes in processed_papers table.
-        This ensures compatibility with existing deduplication records.
+        This function MUST match utils.deduplication.generate_content_hash() exactly.
+        Year and URL are intentionally excluded to maintain compatibility with
+        existing deduplication records in the processed_papers table.
     """
-    # Normalize fields (strip whitespace, lowercase)
-    fields = [
-        str(title).strip().lower() if title else '',
-        str(authors).strip().lower() if authors else '',
-        str(year).strip() if year else '',
-        str(url).strip().lower() if url else '',
-    ]
+    # Normalize fields (strip whitespace, lowercase) - same as deduplication.py
+    normalized_title = title.lower().strip() if title else ""
+    normalized_authors = authors.lower().strip() if authors else ""
     
-    # Concatenate with delimiter
-    hash_input = '|'.join(fields)
+    # Concatenate with delimiter - same format as deduplication.py
+    content = f"{normalized_title}|{normalized_authors}"
     
     # Generate SHA256 hash
-    hash_obj = hashlib.sha256(hash_input.encode('utf-8'))
-    hash_hex = hash_obj.hexdigest()
-    
-    # Return full 64-character digest
-    return hash_hex
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 
 def extract_row_identifier(
@@ -147,23 +145,19 @@ def extract_row_identifier(
                 logger.debug(f"Extracted Drive File ID: {file_id}")
             return file_id
     
-    # Fallback to content hash
+    # Fallback to content hash (title + authors only, matching deduplication system)
     title = get_column_value('title')
     authors = get_column_value('authors')
-    year = get_column_value('year')
-    url = get_column_value('url')
     
-    # Need at least title OR url to generate hash
-    if not title and not url:
+    # Need at least title OR authors to generate hash
+    if not title and not authors:
         if verbose:
-            logger.debug("Row has no title or URL - cannot generate identifier")
+            logger.debug("Row has no title or authors - cannot generate identifier")
         return None
     
     content_hash = generate_content_hash(
         title=title or '',
-        authors=authors or '',
-        year=year or '',
-        url=url or ''
+        authors=authors or ''
     )
     
     if verbose:

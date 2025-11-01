@@ -54,9 +54,10 @@ The application features a modular architecture:
 -   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources with unique configurations.
 -   **Deduplication System**: Three-layer deduplication (Drive file ID, content hash, optional embedding similarity).
 -   **Hash-Based Paper Detection**: Position-independent detection system that identifies new papers regardless of their location in Google Sheets:
-    - **Two-Tier Identifier Strategy**: Uses Google Drive File ID (primary, stable) or content hash from title+authors+year+url (fallback)
+    - **Two-Tier Identifier Strategy**: Uses Google Drive File ID (primary, stable) or content hash from title+authors (fallback - matches existing deduplication system)
     - **Full Sheet Scanning**: Scans entire sheet each run to detect papers inserted anywhere (not just appended)
     - **Database Tracking**: Uses `processed_papers` and `source_paper_mapping` tables to track which papers have been processed per source
+    - **Backward Compatible**: Content hash uses same algorithm as existing deduplication (title+authors only) to prevent reprocessing legacy papers
     - **Trade-off**: ~10-12 seconds overhead per scheduler run for 10K row sheets (acceptable for hourly/daily schedules)
     - **Eliminates Issues**: No longer depends on append-only assumption, handles row reordering, mid-sheet insertions, and deletions
 -   **Scheduled/Periodic Processing**: Automatic processing of new documents via configurable scheduled jobs.
