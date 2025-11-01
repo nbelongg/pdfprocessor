@@ -28,7 +28,12 @@ The application features a modular architecture:
 ### PDF Processing Pipeline
 1.  **Input Layer**: Google Sheets for batch configuration and metadata.
 2.  **PDF Acquisition**: Google Drive API for downloading PDFs.
-3.  **Parsing Layer**: LlamaParse for structured text extraction (markdown/text), with raw output stored as JSON in PostgreSQL.
+3.  **Parsing Layer**: LlamaParse for structured text extraction with advanced features:
+    - **Parsing Modes**: 6 modes (auto, fast, premium, balanced, llm, lvm) for quality/cost tradeoffs
+    - **Result Types**: 4 formats (markdown, text, json, structured) for different use cases
+    - **Parallel Processing**: 1-9 workers for batch speed optimization (default: 4)
+    - **Error Tolerance**: Configurable page error tolerance (default: 5% failure allowed)
+    - Raw output stored as JSON in PostgreSQL for re-processing without re-parsing
 4.  **AI Tagging Layer** (Optional): OpenAI-powered automatic tag generation with product-specific models and customizable prompts. Tags stored in the database and propagated to chunks.
 5.  **Chunking Layer**: Multiple strategies (token-based, sentence-based, semantic) with tag inclusion in metadata.
 6.  **Embedding Layer**: OpenAI embeddings (text-embedding-3-small, text-embedding-3-large).
@@ -79,6 +84,11 @@ The application features a modular architecture:
 ### Product Management & Multi-Tenant Support
 -   **Isolation**: Complete isolation for multiple products/startups via separate Pinecone indexes, API keys, and Google service account credentials.
 -   **Configuration**: Each product stores its name, description, Pinecone configuration, API key secret names (referencing Replit secrets), and complete processing settings (parsing, tagging, chunking, embedding).
+-   **Advanced Parsing Configuration** (per product):
+    - Parsing mode selection (auto/fast/premium/balanced/llm/lvm) for quality vs cost optimization
+    - Result type (markdown/text/json/structured) for different downstream needs
+    - Parallel workers (1-9) for batch processing speed control
+    - Page error tolerance (0-1) for handling partially corrupted documents
 -   **Secret Management**: Uses a secret reference system where products store secret names (e.g., `llamaparse_api_key_secret = "STARTUP_A_LLAMAPARSE_KEY"`) instead of actual credentials, which are retrieved from Replit secrets.
 -   **Centralized Config Builder (Phase 3)**: `utils/config_builder.py` provides single source of truth for product configuration building:
   - `build_product_config()`: Builds complete product config from database with API key retrieval and validation
