@@ -322,16 +322,24 @@ def _retry_failed_job(job: Dict):
             google_credentials
         )
         
-        # Process from last processed row
-        last_processed = source.get('last_processed_row', 0)
-        total_rows = len(sheet_data)
+        # Use hash-based detection to find unprocessed papers
+        from utils.db.documents import get_processed_identifiers_for_source
+        from utils.row_identifier import get_unprocessed_row_indices
+        from utils.database import get_column_mapping_dict
         
-        if last_processed >= total_rows:
-            st.info("ℹ️ No new papers to process. All rows have been processed.")
+        column_mappings = get_column_mapping_dict(source_id)
+        processed_ids = get_processed_identifiers_for_source(source_id)
+        
+        rows_to_process = get_unprocessed_row_indices(
+            sheet_data=sheet_data,
+            column_mappings=column_mappings,
+            processed_identifiers=processed_ids,
+            max_papers=50  # Limit to 50 papers for retry
+        )
+        
+        if not rows_to_process:
+            st.info("ℹ️ No new papers to process. All papers have been processed.")
             return
-        
-        # Limit to 50 papers for retry
-        rows_to_process = list(range(last_processed, min(last_processed + 50, total_rows)))
         
         # Build configuration
         config = get_product_config_from_source(source_id)
@@ -447,7 +455,7 @@ def _render_trigger_processing():
         st.markdown(f"**Tab:** {selected_source['sheet_tab']}")
     with col2:
         st.markdown(f"**Namespace:** {selected_source.get('default_namespace', 'default')}")
-        st.markdown(f"**Last Processed Row:** {selected_source.get('last_processed_row', 0)}")
+        st.markdown("**Detection:** Hash-based (all positions)")
     with col3:
         product_id = selected_source.get('product_id')
         if product_id:
@@ -573,8 +581,20 @@ def _trigger_processing_job(
         
         # Determine which rows to process
         if process_mode == "New Papers Only":
-            last_processed = source.get('last_processed_row', 0)
-            rows_to_process = list(range(last_processed, min(last_processed + max_papers, total_rows)))
+            # Use hash-based detection to find unprocessed papers
+            from utils.db.documents import get_processed_identifiers_for_source
+            from utils.row_identifier import get_unprocessed_row_indices
+            from utils.database import get_column_mapping_dict
+            
+            column_mappings = get_column_mapping_dict(source['id'])
+            processed_ids = get_processed_identifiers_for_source(source['id'])
+            
+            rows_to_process = get_unprocessed_row_indices(
+                sheet_data=sheet_data,
+                column_mappings=column_mappings,
+                processed_identifiers=processed_ids,
+                max_papers=max_papers
+            )
         elif process_mode == "Specific Rows":
             if not selected_rows:
                 return {'success': False, 'error': 'No rows specified'}

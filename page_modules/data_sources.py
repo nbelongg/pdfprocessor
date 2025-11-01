@@ -83,7 +83,7 @@ def _render_source_card(source: dict):
             st.markdown(f"**Active:** {'Yes' if source['active'] else 'No'}")
         with col3:
             st.markdown(f"**Last Processed:** {source.get('last_processed_at', 'Never')}")
-            st.markdown(f"**Last Row:** {source.get('last_processed_row', 0)}")
+            st.markdown("**Detection:** Hash-based (detects papers at any position)")
         
         st.markdown("**Column Mappings:**")
         mappings = get_column_mappings(source['id'])
