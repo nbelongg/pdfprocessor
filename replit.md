@@ -24,6 +24,7 @@ The application features a modular architecture:
 - **`utils/`**: Backend utilities for database, embeddings, parsing, etc.
   - **`utils/db/`**: Modular database operations organized by domain (Phase 2).
   - **`utils/config_builder.py`**: Centralized product configuration builder (Phase 3).
+  - **`utils/row_identifier.py`**: Hash-based paper detection with Drive ID extraction and content hashing.
 
 ### PDF Processing Pipeline
 1.  **Input Layer**: Google Sheets for batch configuration and metadata.
@@ -52,6 +53,12 @@ The application features a modular architecture:
 ### Key Features
 -   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources with unique configurations.
 -   **Deduplication System**: Three-layer deduplication (Drive file ID, content hash, optional embedding similarity).
+-   **Hash-Based Paper Detection**: Position-independent detection system that identifies new papers regardless of their location in Google Sheets:
+    - **Two-Tier Identifier Strategy**: Uses Google Drive File ID (primary, stable) or content hash from title+authors+year+url (fallback)
+    - **Full Sheet Scanning**: Scans entire sheet each run to detect papers inserted anywhere (not just appended)
+    - **Database Tracking**: Uses `processed_papers` and `source_paper_mapping` tables to track which papers have been processed per source
+    - **Trade-off**: ~10-12 seconds overhead per scheduler run for 10K row sheets (acceptable for hourly/daily schedules)
+    - **Eliminates Issues**: No longer depends on append-only assumption, handles row reordering, mid-sheet insertions, and deletions
 -   **Scheduled/Periodic Processing**: Automatic processing of new documents via configurable scheduled jobs.
 -   **Processing History & Tracking**: Persistence of job details in PostgreSQL.
 -   **Preview Mode**: Preview parsed and chunked PDFs before Pinecone upload.
@@ -75,11 +82,11 @@ The application features a modular architecture:
 -   **Database Modularization (Phase 2)**: Database operations are organized into domain-specific modules in `utils/db/`:
   - `products.py`: Product CRUD & API key management (7 functions)
   - `jobs.py`: Processing jobs, chunks, Celery tracking (16 functions)
-  - `documents.py`: Parsed docs, AI tagging, deduplication (12 functions)
+  - `documents.py`: Parsed docs, AI tagging, deduplication (13 functions including `get_processed_identifiers_for_source`)
   - `sources.py`: Data sources & column mappings (10 functions)
   - `scheduling.py`: Scheduled jobs & job runs (9 functions)
   - `connection.py`: Core database connection utilities
-  - All 30 functions with `@with_db_error_handling` decorator preserved exactly.
+  - All functions with `@with_db_error_handling` decorator preserved exactly.
 
 ### Product Management & Multi-Tenant Support
 -   **Isolation**: Complete isolation for multiple products/startups via separate Pinecone indexes, API keys, and Google service account credentials.
