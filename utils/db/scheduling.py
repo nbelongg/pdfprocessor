@@ -41,29 +41,25 @@ def create_scheduled_job(source_id: int, job_name: str, schedule_type: str, sche
             return cur.fetchone()['id']
 
 
+@with_db_error_handling
 def get_scheduled_job(source_id: int) -> Optional[Dict]:
     """Get scheduled job for a data source."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM scheduled_jobs WHERE source_id = %s", (source_id,))
             return cur.fetchone()
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_all_scheduled_jobs(enabled_only: bool = False) -> List[Dict]:
     """Get all scheduled jobs."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             if enabled_only:
                 cur.execute("SELECT * FROM scheduled_jobs WHERE enabled = TRUE ORDER BY next_run_at")
             else:
                 cur.execute("SELECT * FROM scheduled_jobs ORDER BY created_at DESC")
             return cur.fetchall()
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -179,15 +175,13 @@ def update_scheduled_job_run(run_id: int, status: str, **kwargs):
                 )
 
 
+@with_db_error_handling
 def get_scheduled_job_runs(scheduled_job_id: int, limit: int = 20) -> List[Dict]:
     """Get run history for a scheduled job."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM scheduled_job_runs WHERE scheduled_job_id = %s ORDER BY run_started_at DESC LIMIT %s",
                 (scheduled_job_id, limit)
             )
             return cur.fetchall()
-    finally:
-        conn.close()

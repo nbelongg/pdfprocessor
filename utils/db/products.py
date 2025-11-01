@@ -75,33 +75,25 @@ def init_products_table():
             """)
 
 
+@with_db_error_handling
 def get_products(active_only: bool = False) -> List[Dict]:
     """Get all products."""
-    from utils.db.connection import get_db_connection
-    
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             if active_only:
                 cur.execute("SELECT * FROM products WHERE active = TRUE ORDER BY name")
             else:
                 cur.execute("SELECT * FROM products ORDER BY name")
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_product(product_id: int) -> Optional[Dict]:
     """Get product by ID."""
-    from utils.db.connection import get_db_connection
-    
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM products WHERE id = %s", (product_id,))
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
