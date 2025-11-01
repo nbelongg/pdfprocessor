@@ -65,18 +65,16 @@ def save_parsed_document(file_id: str, filename: str, parsed_text: str,
             )
 
 
+@with_db_error_handling
 def get_parsed_document(file_id: str) -> Optional[Dict[str, Any]]:
     """Retrieve raw parsed text for a file (returns JSON)."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM parsed_documents WHERE file_id = %s",
                 (file_id,)
             )
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 def get_parsed_text_for_rechunking(file_id: str) -> Optional[str]:
@@ -101,10 +99,10 @@ def get_parsed_text_for_rechunking(file_id: str) -> Optional[str]:
         return str(parsed_json)
 
 
+@with_db_error_handling
 def get_all_parsed_documents(limit: int = 100) -> List[Dict[str, Any]]:
     """Get list of all parsed documents."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -126,8 +124,6 @@ def get_all_parsed_documents(limit: int = 100) -> List[Dict[str, Any]]:
                 (limit,)
             )
             return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 # ===== AI Tagging =====
@@ -194,32 +190,28 @@ def is_document_tagged(file_id: str) -> bool:
 
 # ===== Deduplication =====
 
+@with_db_error_handling
 def check_paper_processed(drive_file_id: str) -> Optional[Dict[str, Any]]:
     """Check if a paper has been processed before by Drive file ID."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM processed_papers WHERE drive_file_id = %s",
                 (drive_file_id,)
             )
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def check_paper_by_content_hash(content_hash: str) -> Optional[Dict[str, Any]]:
     """Check if a paper has been processed before by content hash."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM processed_papers WHERE content_hash = %s",
                 (content_hash,)
             )
             return _row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 @with_db_error_handling
@@ -285,10 +277,10 @@ def update_processed_paper(paper_id: int, source_id: int, row_number: int):
             )
 
 
+@with_db_error_handling
 def get_deduplication_stats() -> Dict:
     """Get statistics about processed papers and deduplication."""
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) as total FROM processed_papers")
             total = cur.fetchone()['total']
@@ -304,10 +296,9 @@ def get_deduplication_stats() -> Dict:
                 'duplicate_attempts': total_attempts - total,
                 'papers_seen_multiple_times': duplicates
             }
-    finally:
-        conn.close()
 
 
+@with_db_error_handling
 def get_processed_identifiers_for_source(source_id: int) -> set:
     """
     Get all Drive File IDs and content hashes already processed for this source.
@@ -324,8 +315,7 @@ def get_processed_identifiers_for_source(source_id: int) -> set:
     Example:
         {'1a2b3c4d5e6f7g', '8h9i0j1k2l3m4n', 'abc123def456...'}
     """
-    conn = get_db_connection()
-    try:
+    with get_db_transaction() as conn:
         with conn.cursor() as cur:
             # Get all paper_ids for this source from mapping table
             cur.execute(
@@ -349,5 +339,3 @@ def get_processed_identifiers_for_source(source_id: int) -> set:
             
             logger.info(f"Found {len(identifiers)} processed identifiers for source {source_id}")
             return identifiers
-    finally:
-        conn.close()
