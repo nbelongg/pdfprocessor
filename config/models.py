@@ -36,13 +36,15 @@ class ParsingConfig:
     LlamaParse PDF parsing configuration.
     
     Attributes:
-        parsing_mode: Parsing strategy ('auto', 'fast', 'premium')
-        result_type: Output format ('markdown', 'text')
+        parsing_mode: Parsing strategy ('auto', 'fast', 'premium', 'balanced', 'llm', 'lvm')
+        result_type: Output format ('markdown', 'text', 'json', 'structured')
         language: Document language code (e.g., 'en', 'es')
         use_vendor_multimodal: Enable multimodal processing
         vendor_multimodal_model_name: Model for multimodal (default: 'anthropic-sonnet-4')
         page_separator: String to separate pages in output
         parsing_instruction: Optional custom instructions
+        num_workers: Number of parallel workers for batch processing (1-9, default 4)
+        page_error_tolerance: Fraction of pages allowed to fail (0-1, default 0.05)
     """
     parsing_mode: str = 'auto'
     result_type: str = 'markdown'
@@ -51,19 +53,27 @@ class ParsingConfig:
     vendor_multimodal_model_name: str = 'anthropic-sonnet-4'
     page_separator: str = '\n---\n'
     parsing_instruction: str = ''
+    num_workers: int = 4
+    page_error_tolerance: float = 0.05
     
     def __post_init__(self):
         """Validate configuration after initialization."""
-        valid_modes = ['auto', 'fast', 'premium']
+        valid_modes = ['auto', 'fast', 'premium', 'balanced', 'llm', 'lvm']
         if self.parsing_mode not in valid_modes:
             raise ValueError(f"parsing_mode must be one of {valid_modes}, got '{self.parsing_mode}'")
         
-        valid_types = ['markdown', 'text']
+        valid_types = ['markdown', 'text', 'json', 'structured']
         if self.result_type not in valid_types:
             raise ValueError(f"result_type must be one of {valid_types}, got '{self.result_type}'")
         
         if len(self.language) != 2:
             raise ValueError(f"language must be 2-letter code, got '{self.language}'")
+        
+        if not 1 <= self.num_workers <= 9:
+            raise ValueError(f"num_workers must be between 1 and 9, got {self.num_workers}")
+        
+        if not 0 <= self.page_error_tolerance <= 1:
+            raise ValueError(f"page_error_tolerance must be between 0 and 1, got {self.page_error_tolerance}")
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ParsingConfig':

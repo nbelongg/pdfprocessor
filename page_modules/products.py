@@ -78,6 +78,8 @@ def _render_product_card(product: dict):
             st.markdown(f"- Mode: {product.get('parsing_mode', 'auto')}")
             st.markdown(f"- Result Type: {product.get('result_type', 'markdown')}")
             st.markdown(f"- Language: {product.get('language', 'en')}")
+            st.markdown(f"- Workers: {product.get('num_workers', 4)}")
+            st.markdown(f"- Error Tolerance: {product.get('page_error_tolerance', 0.05)}")
             st.markdown(f"- Multimodal: {product.get('use_vendor_multimodal', True)}")
             
             st.markdown("*Chunking:*")
@@ -192,13 +194,23 @@ def _render_add_edit_product():
             parsing_mode = st.selectbox(
                 "Parsing Mode",
                 PARSING_MODES,
-                index=PARSING_MODES.index(product_to_edit.get('parsing_mode', DEFAULT_PARSING_MODE)) if product_to_edit else 0
+                index=PARSING_MODES.index(product_to_edit.get('parsing_mode', DEFAULT_PARSING_MODE)) if product_to_edit else 0,
+                help="auto: LLM-based (balanced), fast: Basic OCR, premium: Agent-based, balanced: Cost-effective LLM, llm: Pure LLM, lvm: Vision model"
             )
             
             result_type = st.selectbox(
                 "Result Type",
                 RESULT_TYPES,
-                index=RESULT_TYPES.index(product_to_edit.get('result_type', DEFAULT_RESULT_TYPE)) if product_to_edit else 0
+                index=RESULT_TYPES.index(product_to_edit.get('result_type', DEFAULT_RESULT_TYPE)) if product_to_edit else 0,
+                help="markdown: Formatted text, text: Plain text, json: Structured data, structured: Full metadata"
+            )
+            
+            num_workers = st.number_input(
+                "Number of Workers",
+                min_value=1,
+                max_value=9,
+                value=product_to_edit.get('num_workers', 4) if product_to_edit else 4,
+                help="Parallel workers for batch processing (1-9). Higher = faster but more expensive."
             )
         
         with col2:
@@ -210,6 +222,16 @@ def _render_add_edit_product():
             use_vendor_multimodal = st.checkbox(
                 "Use Vendor Multimodal",
                 value=product_to_edit.get('use_vendor_multimodal', DEFAULT_USE_MULTIMODAL) if product_to_edit else DEFAULT_USE_MULTIMODAL
+            )
+            
+            page_error_tolerance = st.number_input(
+                "Page Error Tolerance",
+                min_value=0.0,
+                max_value=1.0,
+                value=product_to_edit.get('page_error_tolerance', 0.05) if product_to_edit else 0.05,
+                step=0.01,
+                format="%.2f",
+                help="Fraction of pages allowed to fail (0-1). 0.05 = allow 5% of pages to fail."
             )
         
         page_separator = st.text_input(
@@ -350,6 +372,8 @@ def _render_add_edit_product():
                         "language": language,
                         "use_vendor_multimodal": use_vendor_multimodal,
                         "page_separator": page_separator,
+                        "num_workers": num_workers,
+                        "page_error_tolerance": page_error_tolerance,
                         "semantic_buffer_size": semantic_buffer_size,
                         "pinecone_environment": pinecone_environment,
                         "default_namespace": default_namespace,

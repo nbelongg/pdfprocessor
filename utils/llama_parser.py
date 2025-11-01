@@ -20,7 +20,7 @@ def get_parse_mode(parsing_mode: str) -> str:
     Map form value to LlamaParse parse_mode parameter.
     
     Args:
-        parsing_mode: Form value ('auto', 'fast', or 'premium')
+        parsing_mode: Form value ('auto', 'fast', 'premium', 'balanced', 'llm', 'lvm')
         
     Returns:
         LlamaParse parse_mode string
@@ -28,7 +28,10 @@ def get_parse_mode(parsing_mode: str) -> str:
     mode_mapping = {
         'auto': 'parse_page_with_llm',
         'fast': 'parse_page_without_llm',
-        'premium': 'parse_page_with_agent'
+        'premium': 'parse_page_with_agent',
+        'balanced': 'parse_page_with_llm',
+        'llm': 'parse_page_with_llm',
+        'lvm': 'parse_page_with_lvm'
     }
     return mode_mapping.get(parsing_mode, 'parse_page_with_llm')
 
@@ -62,7 +65,9 @@ def parse_pdf_with_llamaparse(
             result_type=config.get('result_type', 'markdown'),
             parsing_instruction=config.get('parsing_instruction', ''),
             language=config.get('language', 'en'),
-            page_separator=config.get('page_separator', '\n---\n')
+            page_separator=config.get('page_separator', '\n---\n'),
+            num_workers=config.get('num_workers', 4),
+            page_error_tolerance=config.get('page_error_tolerance', 0.05)
         )
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:

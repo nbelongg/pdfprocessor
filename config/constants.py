@@ -83,8 +83,8 @@ DEFAULT_NAMESPACE = "default"
 CHUNKING_STRATEGIES = ["Token-based", "Sentence-based", "Semantic"]
 
 # Parsing modes
-PARSING_MODES = ["auto", "fast", "premium"]
-RESULT_TYPES = ["markdown", "text"]
+PARSING_MODES = ["auto", "fast", "premium", "balanced", "llm", "lvm"]
+RESULT_TYPES = ["markdown", "text", "json", "structured"]
 
 # ============================================
 # UI TEXT & MESSAGES
