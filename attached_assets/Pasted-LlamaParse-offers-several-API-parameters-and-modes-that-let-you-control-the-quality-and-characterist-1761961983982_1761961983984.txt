@@ -1,0 +1,83 @@
+LlamaParse offers several API parameters and modes that let you control the quality and characteristics of parsing as of October 2025. The parsing "quality" is mainly set through modes and some related settings, which control accuracy, speed, and error tolerance.
+
+### Parsing Quality Modes
+
+- **Fast**: Lowest cost, fastest parsing. Returns basic extraction with minimal post-processing—best for speed or bulk jobs where perfect accuracy is not essential.
+- **Balanced**: Middle ground between cost, speed, and accuracy. Uses LLMs after basic extraction for improved structure and error correction.
+- **Premium**: Highest accuracy available, using advanced LLM/LVM workflows including screenshots (LVM) and agentic workflows. This is more expensive and slower but maximizes quality and structure retention.
+
+#### Advanced/Custom Control
+- **Parse without AI**: Raw text extraction with spatial layout, basic OCR/fixes, best for simple use-cases.
+- **Parse with LLM**: Extracts text, then reconstructs structure using LLMs for smarter segmentation and correction.
+- **Parse with LVM**: Takes document screenshots, uses vision models (e.g., Gemini 2.5 Pro, GPT-4.1 Vision, etc.) for text and structure, suitable for image- and layout-heavy docs.
+- **Parse with Agent**: Combines LLM, LVM, and custom orchestration for the highest fidelity.
+
+### Key API Parameters (as of 2025)
+
+| Parameter                  | Description                                                       | Typical Values                                         |
+|----------------------------|-------------------------------------------------------------------|--------------------------------------------------------|
+| `quality` / `mode`         | Parsing quality (maps to Fast, Balanced, Premium, etc.)           | "fast", "balanced", "premium", "llm", "lvm", "agent"   |
+| `pageErrorTolerance`       | Tolerance for failed pages (fraction, 0-1)                        | 0.05, 0.2, or set as needed                            |
+| `replace_failed_page_mode` | What to do if page parsing fails                                  | "raw_text" (default), "blank_page", "error_message"    |
+| `result_type`              | Output format                                                     | "text", "markdown", "json", "structured"               |
+| `num_workers`              | Parallel requests for batch processing                            | 1 to 9 (default 4)                                     |
+| `confidence_threshold`     | Confidence score for page review/human intervention               | e.g., 0.2 = auto flag for review below this threshold  |
+| `language`                 | Document language                                                 | "en", "hi", "fr", etc.                                |
+| `verbose`                  | Verbose output/logging                                            | true/false                                             |
+
+### Latest Features (May-October 2025)
+
+- **Confidence Scoring**: Every parsed page now includes a score between 0 and 1; pages below ~0.2 are flagged for human review, except in Fast and LVM modes. Text-only and image pages are measured slightly differently, combining multiple overlap/accuracy checks.[1][2][3]
+- **Page Error Tolerance**: Control the job's tolerance for failed pages using `pageErrorTolerance`.[1]
+- **Replace Failed Page Handling**: Decide how the parser responds when a page fails, using `replace_failed_page_mode`. Options: return raw text, a blank page, or an error message.[1]
+- **New Model Support**: State-of-the-art LLMs/LVMs like GPT-4.1 and Gemini 2.5 Pro are selectable under Premium/Agentic modes for advanced accuracy.[3]
+
+### Example API Usage
+
+For **premium quality** with low error tolerance and confidence-based review:
+```json
+{
+  "quality": "premium",
+  "pageErrorTolerance": 0.05,
+  "replace_failed_page_mode": "error_message",
+  "confidence_threshold": 0.2,
+  "result_type": "markdown"
+}
+```
+For **fast parsing** with defaults:
+```json
+{
+  "quality": "fast",
+  "result_type": "text"
+}
+```
+For **LLM-based balanced parsing**:
+```json
+{
+  "quality": "balanced",
+  "result_type": "json"
+}
+```
+
+These settings and modes provide granular control over parsing quality, speed, and cost, reflecting the most recent (late 2025) LlamaParse API changes.[4][5][2][3][1]
+
+[1](https://www.llamaindex.ai/blog/llamaparse-update-may-2025-new-models-skew-detection-and-more)
+[2](https://www.linkedin.com/posts/jack-chew-852958189_llamaparse-ai-dataaccuracy-activity-7327501812033376256-2oPb)
+[3](https://www.linkedin.com/posts/llamaindex_llamaparse-keeps-getting-better-weve-got-activity-7326271589757399042-MyWV)
+[4](https://www.llamaindex.ai/blog/llamaparse-update-new-and-upcoming-features)
+[5](https://syshin0116.github.io/Projects/LangChain-Open-Tutorial/2025-01-12-llamaparse)
+[6](https://pypi.org/project/llama-parse/)
+[7](https://www.reddit.com/r/LocalLLaMA/comments/1ay25ka/introducing_llamacloud_and_llamaparse/)
+[8](https://github.com/zahaby/intro-llm-rag/blob/main/llama-parsing/llama-parser.md)
+[9](https://www.youtube.com/watch?v=TYLUTIAn1Yg)
+[10](https://developers.llamaindex.ai/typescript/framework/modules/data/readers/llama_parse/)
+[11](https://github.com/run-llama/llama_cloud_services)
+[12](https://www.youtube.com/watch?v=5Ahdg1DkPMc)
+[13](https://upstash.com/docs/vector/tutorials/llamaparse)
+[14](https://github.com/run-llama/llama_parse/issues/312)
+[15](https://x.com/llama_index/status/1920505775677722750)
+[16](https://langchain-opentutorial.gitbook.io/langchain-opentutorial/06-documentloader/12-llamaparse)
+[17](https://llamaindexxx.readthedocs.io/en/latest/module_guides/loading/connector/llama_parse.html)
+[18](https://www.youtube.com/watch?v=CtTBPz7qGdM)
+[19](https://huggingface.co/docs/transformers/en/model_doc/llama)
+[20](https://www.llama.com)
