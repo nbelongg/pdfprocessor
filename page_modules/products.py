@@ -228,7 +228,7 @@ def _render_add_edit_product():
                 "Page Error Tolerance",
                 min_value=0.0,
                 max_value=1.0,
-                value=product_to_edit.get('page_error_tolerance', 0.05) if product_to_edit else 0.05,
+                value=float(product_to_edit.get('page_error_tolerance', 0.05)) if product_to_edit else 0.05,
                 step=0.01,
                 format="%.2f",
                 help="Fraction of pages allowed to fail (0-1). 0.05 = allow 5% of pages to fail."
