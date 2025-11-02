@@ -46,6 +46,9 @@ from utils.exceptions import TransientError
 from utils.config_builder import build_product_config
 from utils.db.documents import get_processed_identifiers_for_source
 from utils.row_identifier import get_unprocessed_row_indices
+from utils.metadata_fingerprint import calculate_metadata_fingerprint
+from utils.google_sheets import extract_tags_from_row
+from utils.db.tag_configs import get_tag_configurations
 
 
 # ============================================
@@ -499,6 +502,98 @@ def get_unprocessed_papers(
     return unprocessed_indices
 
 
+def get_papers_with_metadata_changes(
+    source_id: int,
+    sheet_data: pd.DataFrame,
+    column_mappings: Dict[str, str],
+    max_papers_per_run: int = 50
+) -> List[Dict[str, Any]]:
+    """
+    Detect papers with metadata changes by comparing current sheet metadata
+    with stored metadata fingerprints.
+    
+    This enables metadata-only updates without re-parsing PDFs.
+    
+    Args:
+        source_id: Data source ID
+        sheet_data: DataFrame with all papers
+        column_mappings: Dict mapping roles to column names
+        max_papers_per_run: Maximum papers to update in one run
+        
+    Returns:
+        List of dicts with: file_id, new_metadata, new_fingerprint
+    """
+    from utils.db.documents import get_processed_paper_by_identifier
+    from utils.google_drive import extract_file_id_from_drive_link
+    
+    logger.info(f"Checking {len(sheet_data)} papers for metadata changes...")
+    
+    papers_to_update = []
+    drive_link_column = column_mappings.get('drive_link', '')
+    
+    if not drive_link_column:
+        logger.warning("No drive_link column mapped, skipping metadata change detection")
+        return []
+    
+    # Get tag configurations for this source
+    try:
+        tag_configs = get_tag_configurations(source_id)
+    except Exception as e:
+        logger.warning(f"Failed to get tag configurations: {e}")
+        tag_configs = []
+    
+    for idx, row in sheet_data.iterrows():
+        # Extract file_id
+        drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
+        file_id = extract_file_id_from_drive_link(drive_link)
+        
+        if not file_id:
+            continue
+        
+        # Get processed paper from database
+        try:
+            paper = get_processed_paper_by_identifier(file_id, None)
+            if not paper or not paper.get('metadata_fingerprint'):
+                # Paper not processed yet or no fingerprint stored, skip
+                continue
+                
+            # Build current metadata from sheet row
+            current_metadata = {}
+            for role, col_name in column_mappings.items():
+                if role != 'drive_link' and col_name in row:
+                    value = row[col_name]
+                    if pd.notna(value):
+                        current_metadata[role] = str(value)
+            
+            # Extract tags from spreadsheet
+            spreadsheet_tags = extract_tags_from_row(row, tag_configs, column_mappings) if tag_configs else []
+            current_metadata['tags'] = spreadsheet_tags if spreadsheet_tags else []
+            
+            # Calculate fingerprint of current metadata
+            current_fingerprint = calculate_metadata_fingerprint(current_metadata)
+            stored_fingerprint = paper.get('metadata_fingerprint')
+            
+            # Compare fingerprints
+            if current_fingerprint != stored_fingerprint:
+                logger.info(f"📋 Metadata changed for file_id {file_id[:16]}... (fingerprint mismatch)")
+                papers_to_update.append({
+                    'file_id': file_id,
+                    'new_metadata': current_metadata,
+                    'new_fingerprint': current_fingerprint
+                })
+                
+                if len(papers_to_update) >= max_papers_per_run:
+                    logger.info(f"Reached max_papers_per_run limit ({max_papers_per_run})")
+                    break
+                    
+        except Exception as e:
+            logger.warning(f"Error checking metadata for file_id {file_id}: {e}")
+            continue
+    
+    logger.info(f"Found {len(papers_to_update)} papers with metadata changes")
+    return papers_to_update
+
+
 # ============================================
 # JOB EXECUTION
 # ============================================
@@ -660,13 +755,51 @@ def run_scheduled_job(scheduled_job: Dict[str, Any]) -> Dict[str, Any]:
             f"Failures={failures}"
         )
         
+        # Check for metadata changes in existing papers
+        metadata_updates_count = 0
+        try:
+            logger.info("Checking for metadata changes in existing papers...")
+            papers_with_changes = get_papers_with_metadata_changes(
+                source_id=source_id,
+                sheet_data=sheet_data,
+                column_mappings=column_mappings,
+                max_papers_per_run=50  # Limit metadata updates per run
+            )
+            
+            if papers_with_changes:
+                from tasks_metadata import update_metadata_batch_task
+                from utils.db.metadata_updates import create_metadata_update_job
+                from utils.config_builder import build_product_config
+                
+                # Create metadata update job in database
+                job_id = create_metadata_update_job(
+                    source_id=source_id,
+                    product_id=source_info.get('product_id'),
+                    total_papers=len(papers_with_changes)
+                )
+                
+                # Build product config for metadata updates
+                product_config_dict = build_product_config(source_info.get('product_id'))
+                
+                # Queue batch metadata update task
+                update_metadata_batch_task.apply_async(
+                    args=(job_id, papers_with_changes, product_config_dict),
+                    queue='metadata_updates'
+                )
+                
+                metadata_updates_count = len(papers_with_changes)
+                logger.info(f"✅ Queued metadata updates for {metadata_updates_count} papers (job_id: {job_id})")
+        except Exception as e:
+            logger.warning(f"Failed to check/queue metadata updates: {e}")
+        
         return {
             'status': 'completed',
             'processing_job_id': results.get('job_id'),
             'papers_found': len(new_indices),
             'papers_processed': results.get('total_pdfs', 0),
             'papers_skipped_duplicate': duplicates_skipped,
-            'papers_failed': failures
+            'papers_failed': failures,
+            'metadata_updates_queued': metadata_updates_count
         }
         
     except (ConnectionError, TimeoutError) as e:
