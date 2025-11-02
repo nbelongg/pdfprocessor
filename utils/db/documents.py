@@ -339,3 +339,34 @@ def get_processed_identifiers_for_source(source_id: int) -> set:
             
             logger.info(f"Found {len(identifiers)} processed identifiers for source {source_id}")
             return identifiers
+
+
+@with_db_error_handling
+def update_processed_paper_fingerprint(
+    file_id: str,
+    metadata_fingerprint: str,
+    metadata_json: Dict[str, Any]
+):
+    """
+    Update the metadata fingerprint and JSON for a processed paper.
+    
+    Used after metadata-only updates to track the new metadata state.
+    
+    Args:
+        file_id: Google Drive file ID
+        metadata_fingerprint: New SHA256 fingerprint of metadata
+        metadata_json: New metadata dictionary
+    """
+    with get_db_transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE processed_papers
+                SET metadata_fingerprint = %s,
+                    metadata_json = %s,
+                    last_processed_at = CURRENT_TIMESTAMP
+                WHERE drive_file_id = %s
+                """,
+                (metadata_fingerprint, Json(metadata_json), file_id)
+            )
+            logger.info(f"Updated metadata fingerprint for file_id: {file_id}")
