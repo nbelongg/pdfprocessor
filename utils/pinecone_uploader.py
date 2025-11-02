@@ -160,6 +160,10 @@ def upload_to_pinecone(
                 elif value is None:
                     vector_metadata[key] = ""
             
+            # Log tags for first chunk of each file (for debugging)
+            if i == 0 and 'tags' in vector_metadata:
+                logger.info(f"🏷️  Pinecone upload - tags for chunk 0: '{vector_metadata['tags']}'")
+            
             vectors.append({
                 'id': vector_id,
                 'values': embedding,
