@@ -249,3 +249,51 @@ def get_unprocessed_row_indices(
         return limited_indices
     
     return unprocessed_indices
+
+
+def dataframe_index_to_sheet_row(df_index: int) -> int:
+    """
+    Convert pandas DataFrame index to actual Google Sheet row number.
+    
+    Google Sheets structure:
+    - Row 1: Headers (skipped by get_all_records())
+    - Row 2: First data row → DataFrame index 0
+    - Row 3: Second data row → DataFrame index 1
+    - ...
+    
+    Args:
+        df_index: 0-based pandas DataFrame index
+        
+    Returns:
+        1-based Google Sheet row number
+        
+    Examples:
+        >>> dataframe_index_to_sheet_row(0)
+        2  # First data row is Google Sheets row 2
+        >>> dataframe_index_to_sheet_row(48)
+        50  # DataFrame index 48 is Google Sheets row 50
+    """
+    # Add 2: +1 for header row, +1 for 0→1 based indexing
+    return df_index + 2
+
+
+def sheet_row_to_dataframe_index(sheet_row: int) -> int:
+    """
+    Convert Google Sheet row number to pandas DataFrame index.
+    
+    This is the inverse of dataframe_index_to_sheet_row().
+    
+    Args:
+        sheet_row: 1-based Google Sheet row number
+        
+    Returns:
+        0-based pandas DataFrame index
+        
+    Examples:
+        >>> sheet_row_to_dataframe_index(2)
+        0  # Google Sheets row 2 is DataFrame index 0
+        >>> sheet_row_to_dataframe_index(50)
+        48  # Google Sheets row 50 is DataFrame index 48
+    """
+    # Subtract 2: -1 for header row, -1 for 1→0 based indexing
+    return sheet_row - 2
