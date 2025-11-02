@@ -150,7 +150,12 @@ def upload_to_pinecone(
             
             # Sanitize metadata for Pinecone
             for key, value in vector_metadata.items():
-                if isinstance(value, (list, dict)):
+                if isinstance(value, list):
+                    # Convert lists to comma-separated strings for readability
+                    # e.g., ['tag1', 'tag2'] → "tag1, tag2" (not "['tag1', 'tag2']")
+                    vector_metadata[key] = ', '.join(str(item) for item in value) if value else ""
+                elif isinstance(value, dict):
+                    # Convert dicts to JSON-like string
                     vector_metadata[key] = str(value)
                 elif value is None:
                     vector_metadata[key] = ""

@@ -268,7 +268,8 @@ def process_multi_source_pipeline(
                     'drive_link': drive_link,
                     'source': source_info['name'],
                     'source_id': source_id,
-                    'topic': source_info.get('topic', '')
+                    'topic': source_info.get('topic', ''),
+                    'tags': []  # Always initialize tags field (will be populated below)
                 }
                 
                 for role, col_name in column_mappings.items():
@@ -281,9 +282,12 @@ def process_multi_source_pipeline(
                 spreadsheet_tags = []
                 try:
                     tag_configs = get_tag_configurations(source_id)
+                    logger.info(f"📋 Found {len(tag_configs) if tag_configs else 0} tag configurations for source {source_id}")
                     if tag_configs:
                         spreadsheet_tags = extract_tags_from_row(row, tag_configs, column_mappings)
-                        logger.info(f"Extracted {len(spreadsheet_tags)} tags from spreadsheet: {spreadsheet_tags}")
+                        logger.info(f"🏷️  Extracted {len(spreadsheet_tags)} tags from spreadsheet: {spreadsheet_tags}")
+                    else:
+                        logger.info(f"📋 No tag configurations found for source {source_id}")
                 except Exception as e:
                     logger.warning(f"Failed to extract spreadsheet tags: {str(e)}")
                 
@@ -334,18 +338,22 @@ def process_multi_source_pipeline(
                         row_metadata['auto_generated_tags'] = True
                         row_metadata['spreadsheet_tags_count'] = len(spreadsheet_tags)
                         row_metadata['ai_tags_count'] = len(validated_tags)
+                        logger.info(f"🏷️  Final merged tags ({len(unique_tags)}): {unique_tags}")
                         
                     except Exception as e:
                         # Don't fail the entire pipeline if tagging fails
                         logger.warning(f"Tagging failed for {file_metadata.get('name', '')}: {str(e)}")
                         # Use spreadsheet tags only if AI tagging fails
                         row_metadata['tags'] = spreadsheet_tags if spreadsheet_tags else []
+                        logger.info(f"🏷️  Using spreadsheet tags after AI tagging failure ({len(row_metadata['tags'])}): {row_metadata['tags']}")
                 else:
                     # If AI tagging is disabled, use spreadsheet tags only
+                    row_metadata['tags'] = spreadsheet_tags if spreadsheet_tags else []
                     if spreadsheet_tags:
-                        row_metadata['tags'] = spreadsheet_tags
                         row_metadata['spreadsheet_tags_only'] = True
-                        logger.info(f"Using {len(spreadsheet_tags)} spreadsheet tags (AI tagging disabled)")
+                        logger.info(f"🏷️  Using {len(spreadsheet_tags)} spreadsheet tags (AI tagging disabled): {spreadsheet_tags}")
+                    else:
+                        logger.info(f"🏷️  No tags available (AI tagging disabled, no spreadsheet tags)")
                 
                 if progress_callback:
                     progress_callback(
