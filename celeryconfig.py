@@ -135,7 +135,7 @@ celery_app = Celery(
     'pdf_processor',
     broker=redis_url,
     backend=redis_url,
-    include=['tasks']
+    include=['tasks', 'tasks_metadata']
 )
 
 
@@ -177,12 +177,15 @@ celery_app.conf.update(
     task_routes={
         'tasks.process_pdf_task': {'queue': 'pdf_processing'},
         'tasks.process_batch_task': {'queue': 'batch_processing'},
+        'tasks_metadata.update_metadata_task': {'queue': 'metadata_updates'},
+        'tasks_metadata.update_metadata_batch_task': {'queue': 'metadata_updates'},
     },
     
     # Queue configuration
     task_queues=(
         Queue('pdf_processing', routing_key='pdf.#'),
         Queue('batch_processing', routing_key='batch.#'),
+        Queue('metadata_updates', routing_key='metadata.#'),
     ),
     
     # Result backend settings
