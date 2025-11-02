@@ -31,6 +31,7 @@ PAGES = {
     "data_sources": Page("📚", "Data Sources", "data_sources"),
     "job_queue": Page("⚙️", "Job Management", "job_queue"),
     "monitoring": Page("📊", "Monitoring & Costs", "monitoring"),
+    "metadata_management": Page("🔄", "Metadata Management", "metadata_management"),
     "status": Page("📈", "Status", "status"),
     "history": Page("📜", "History", "history"),
     "search": Page("🔍", "Search Test", "search"),
@@ -38,7 +39,7 @@ PAGES = {
 
 # Page order for navigation
 PAGE_ORDER = [
-    "home", "products", "data_sources", "job_queue", "monitoring", "status", "history", "search"
+    "home", "products", "data_sources", "job_queue", "monitoring", "metadata_management", "status", "history", "search"
 ]
 
 # ============================================

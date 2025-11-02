@@ -16,7 +16,7 @@ from config.constants import (
 
 # Import page modules
 from page_modules import home, products, data_sources, select_files, preview
-from page_modules import process, job_queue, monitoring, status, history, search
+from page_modules import process, job_queue, monitoring, status, history, search, metadata_management
 
 # Import database utilities for sidebar stats
 from utils.database import get_products, get_data_sources
@@ -133,6 +133,7 @@ PAGE_RENDERERS = {
     "process": process.render,
     "job_queue": job_queue.render,
     "monitoring": monitoring.render_monitoring_page,
+    "metadata_management": metadata_management.render,
     "status": status.render,
     "history": history.render,
     "search": search.render
