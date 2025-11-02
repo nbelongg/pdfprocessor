@@ -1,7 +1,7 @@
 # PDF Chunking & Embedding Pipeline
 
 ## Overview
-This project is a Streamlit-based web application for processing PDF documents from Google Drive. It provides a data pipeline for parsing PDFs using LlamaParse, chunking extracted text, generating embeddings with OpenAI models, and storing vectors in Pinecone for semantic search. The system supports batch processing, metadata enrichment from Google Sheets, deduplication, scheduled processing, and multi-product/multi-startup support, aiming to efficiently manage and make searchable document collections.
+This project is a Streamlit-based web application for processing PDF documents from Google Drive. It provides a data pipeline for parsing PDFs using LlamaParse, chunking extracted text, generating embeddings with OpenAI models, and storing vectors in Pinecone for semantic search. The system supports batch processing, metadata enrichment from Google Sheets, deduplication, scheduled processing, multi-product/multi-startup support, and **metadata-only updates** (updating metadata for existing papers without re-parsing PDFs or regenerating embeddings), aiming to efficiently manage and make searchable document collections.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -53,6 +53,14 @@ The application features a modular architecture:
 ### Key Features
 -   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources with unique configurations.
 -   **Deduplication System**: Three-layer deduplication (Drive file ID, content hash, optional embedding similarity).
+-   **Metadata-Only Updates**: Update metadata (tags, year, topic) for existing papers WITHOUT re-parsing PDFs or regenerating embeddings:
+    - **40-80x faster** than full reprocessing (~165ms vs 7-13 seconds per paper)
+    - **$0 API costs** (no LlamaParse or OpenAI calls)
+    - **Storage cost**: ~$2/month for 100K chunks (embeddings stored in PostgreSQL as real[] arrays)
+    - **Automatic detection**: Scheduler compares metadata fingerprints (SHA256) to detect changes
+    - **Manual trigger**: UI page for on-demand metadata updates
+    - **Celery tasks**: Dedicated queue (`metadata_updates`) for async processing
+    - **Migration script**: Backfill fingerprints for existing papers (`migrate_metadata_fingerprints.py`)
 -   **Hash-Based Paper Detection**: Position-independent detection system that identifies new papers regardless of their location in Google Sheets:
     - **Two-Tier Identifier Strategy**: Uses Google Drive File ID (primary, stable) or content hash from title+authors (fallback - matches existing deduplication system)
     - **Full Sheet Scanning**: Scans entire sheet each run to detect papers inserted anywhere (not just appended)
@@ -67,7 +75,7 @@ The application features a modular architecture:
 -   **Metadata Transformation Rules**: Reusable rules for metadata manipulation.
 -   **Multi-Product/Multi-Startup Support**: Management of multiple products with isolated Pinecone indexes, API keys, and processing settings.
 -   **Parsed Content Persistence**: Raw LlamaParse output stored in PostgreSQL as JSON for re-chunking/re-embedding without re-parsing.
--   **Job Management & Monitoring**: Real-time Celery job monitoring, on-demand processing triggers, job history with filtering, manual retry/cancel controls.
+-   **Job Management & Monitoring**: Real-time Celery job monitoring, on-demand processing triggers, job history with filtering, manual retry/cancel controls, metadata update job tracking.
 
 ### UI/UX Decisions
 -   **Navigation**: Left sidebar with radio buttons for page selection.
@@ -83,9 +91,10 @@ The application features a modular architecture:
 -   **Database Modularization (Phase 2)**: Database operations are organized into domain-specific modules in `utils/db/`:
   - `products.py`: Product CRUD & API key management (7 functions)
   - `jobs.py`: Processing jobs, chunks, Celery tracking (16 functions)
-  - `documents.py`: Parsed docs, AI tagging, deduplication (13 functions including `get_processed_identifiers_for_source`)
+  - `documents.py`: Parsed docs, AI tagging, deduplication (13 functions including `get_processed_identifiers_for_source` and `update_processed_paper_fingerprint`)
   - `sources.py`: Data sources & column mappings (10 functions)
   - `scheduling.py`: Scheduled jobs & job runs (9 functions)
+  - `metadata_updates.py`: Metadata-only update operations (6 functions for chunk retrieval, metadata updates, job tracking)
   - `connection.py`: Core database connection utilities
   - All functions with `@with_db_error_handling` decorator preserved exactly.
 
