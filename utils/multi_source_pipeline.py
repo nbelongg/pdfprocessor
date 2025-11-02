@@ -25,6 +25,7 @@ from utils.db.tag_configs import get_tag_configurations
 from utils.deduplication import check_all_layers, record_or_update_paper
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.config_builder import build_product_config
+from utils.metadata_fingerprint import calculate_metadata_fingerprint
 import os
 
 
@@ -417,6 +418,10 @@ def process_multi_source_pipeline(
                         str(authors) if pd.notna(authors) else ''
                     )
                     
+                    # Calculate metadata fingerprint for future change detection
+                    metadata_fp = calculate_metadata_fingerprint(row_metadata)
+                    logger.debug(f"📋 Calculated metadata fingerprint: {metadata_fp[:16]}...")
+                    
                     logger.info(f"📝 Recording successfully processed paper at Sheet row {sheet_row} (DataFrame index {idx})")
                     record_or_update_paper(
                         drive_file_id=file_id,
@@ -428,7 +433,8 @@ def process_multi_source_pipeline(
                         source_id=source_id,
                         row_number=sheet_row,  # Use actual Google Sheets row number
                         is_duplicate=False,
-                        existing_paper=None
+                        existing_paper=None,
+                        metadata_fingerprint=metadata_fp
                     )
                 
                 results['total_pdfs'] += 1

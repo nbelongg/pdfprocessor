@@ -162,9 +162,10 @@ def record_or_update_paper(
     source_id: int,
     row_number: int,
     is_duplicate: bool,
-    existing_paper: Optional[Dict] = None
+    existing_paper: Optional[Dict] = None,
+    metadata_fingerprint: str = None
 ) -> int:
-    """Record new paper or update existing one."""
+    """Record new paper or update existing one with optional metadata fingerprint."""
     if is_duplicate and existing_paper:
         paper_id = existing_paper['id']
         update_processed_paper(paper_id, source_id, row_number)
@@ -178,5 +179,6 @@ def record_or_update_paper(
             metadata,
             pinecone_namespace,
             source_id,
-            row_number
+            row_number,
+            metadata_fingerprint
         )

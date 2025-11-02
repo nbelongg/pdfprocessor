@@ -223,19 +223,20 @@ def record_processed_paper(
     metadata: Dict,
     pinecone_namespace: str,
     source_id: int,
-    row_number: int
+    row_number: int,
+    metadata_fingerprint: str = None
 ) -> int:
-    """Record a newly processed paper."""
+    """Record a newly processed paper with optional metadata fingerprint."""
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO processed_papers
-                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace, metadata_fingerprint, metadata_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace)
+                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace, metadata_fingerprint, Json(metadata) if metadata_fingerprint else None)
             )
             paper_id = cur.fetchone()['id']
             
