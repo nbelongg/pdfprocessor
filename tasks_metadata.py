@@ -61,7 +61,8 @@ def update_metadata_task(
             raise ValueError(f"No chunks found for file_id: {file_id}")
         
         # Step 2: Apply new metadata to each chunk
-        chunk_updates = []
+        # Use dict mapping to handle non-contiguous chunk indices safely
+        chunk_updates_dict = {}
         for chunk in chunks:
             # Merge old metadata with new metadata
             updated_metadata = {
@@ -69,10 +70,13 @@ def update_metadata_task(
                 **new_metadata  # Overwrite with new metadata (tags, year, topic, etc.)
             }
             
-            chunk_updates.append({
+            chunk_updates_dict[chunk['chunk_index']] = {
                 'chunk_index': chunk['chunk_index'],
                 'metadata': updated_metadata
-            })
+            }
+        
+        # Convert back to list for update function
+        chunk_updates = list(chunk_updates_dict.values())
         
         logger.info(f"✏️  Prepared metadata updates for {len(chunk_updates)} chunks")
         
@@ -91,8 +95,8 @@ def update_metadata_task(
                 chunk_index = chunk['chunk_index']
                 vector_id = f"{file_id}_{chunk_index}"
                 
-                # Get updated metadata from chunk_updates
-                updated_metadata = chunk_updates[chunk_index]['metadata']
+                # Get updated metadata from chunk_updates_dict (safe lookup)
+                updated_metadata = chunk_updates_dict[chunk_index]['metadata']
                 
                 # Sanitize metadata for Pinecone (convert lists to strings)
                 vector_metadata = {
