@@ -7,6 +7,7 @@ from typing import List, Dict, Callable, Optional
 import uuid
 import logging
 from utils.google_sheets import extract_file_id_from_drive_link, extract_tags_from_row
+from utils.row_identifier import dataframe_index_to_sheet_row
 
 logger = logging.getLogger(__name__)
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
@@ -143,7 +144,10 @@ def process_multi_source_pipeline(
         for idx in selected_indices:
             try:
                 processed_papers += 1
-                logger.info(f"🔍 DEBUG: Starting processing for row {idx}")
+                # Convert DataFrame index to actual Google Sheets row number
+                sheet_row = dataframe_index_to_sheet_row(idx)
+                logger.info(f"📊 ROW MAPPING: DataFrame index {idx} → Google Sheets row {sheet_row}")
+                logger.info(f"🔍 DEBUG: Starting processing for DataFrame row {idx} (Sheet row {sheet_row})")
                 
                 if progress_callback:
                     progress_callback(
@@ -205,12 +209,14 @@ def process_multi_source_pipeline(
                         results['details'].append({
                             'source': source_info['name'],
                             'row': idx,
+                            'sheet_row': sheet_row,
                             'file_id': file_id,
                             'status': 'skipped_duplicate',
                             'duplicate_layer': dedup_result['duplicate_layer'],
                             'existing_paper': dedup_result['existing_paper']
                         })
                         
+                        logger.info(f"📝 Recording duplicate paper at Sheet row {sheet_row} (DataFrame index {idx})")
                         record_or_update_paper(
                             drive_file_id=file_id,
                             content_hash=dedup_result['content_hash'],
@@ -219,7 +225,7 @@ def process_multi_source_pipeline(
                             metadata={},
                             pinecone_namespace='default',
                             source_id=source_id,
-                            row_number=idx,
+                            row_number=sheet_row,  # Use actual Google Sheets row number
                             is_duplicate=True,
                             existing_paper=dedup_result['existing_paper']
                         )
@@ -402,6 +408,7 @@ def process_multi_source_pipeline(
                         str(authors) if pd.notna(authors) else ''
                     )
                     
+                    logger.info(f"📝 Recording successfully processed paper at Sheet row {sheet_row} (DataFrame index {idx})")
                     record_or_update_paper(
                         drive_file_id=file_id,
                         content_hash=content_hash,
@@ -410,7 +417,7 @@ def process_multi_source_pipeline(
                         metadata=row_metadata,
                         pinecone_namespace=namespace,
                         source_id=source_id,
-                        row_number=idx,
+                        row_number=sheet_row,  # Use actual Google Sheets row number
                         is_duplicate=False,
                         existing_paper=None
                     )
@@ -420,11 +427,12 @@ def process_multi_source_pipeline(
                 results['total_embeddings'] += len(embeddings)
                 source_results['papers_processed'] += 1
                 source_results['chunks_created'] += len(nodes)
-                source_results['last_row_processed'] = idx + 1
+                source_results['last_row_processed'] = sheet_row  # Use actual Google Sheets row number
                 
                 results['details'].append({
                     'source': source_info['name'],
                     'row': idx,
+                    'sheet_row': sheet_row,
                     'file_id': file_id,
                     'filename': file_metadata.get('name', ''),
                     'chunks': len(nodes),
