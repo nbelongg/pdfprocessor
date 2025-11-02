@@ -132,15 +132,16 @@ def delete_job(job_id: str):
 
 @with_db_error_handling
 def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
-    """Save chunks to database."""
+    """Save chunks to database with embeddings for metadata-only updates."""
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             for idx, chunk in enumerate(chunks):
+                embedding = chunk.get('embedding')
                 cur.execute(
                     """
                     INSERT INTO processing_chunks
-                    (job_id, file_id, filename, chunk_index, chunk_text, metadata, namespace)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (job_id, file_id, filename, chunk_index, chunk_text, metadata, namespace, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         job_id,
@@ -149,7 +150,8 @@ def save_chunks(job_id: str, file_id: str, filename: str, chunks: List[Dict]):
                         idx,
                         chunk.get('text', ''),
                         Json(chunk.get('metadata', {})),
-                        chunk.get('namespace', 'default')
+                        chunk.get('namespace', 'default'),
+                        embedding  # Store embedding as PostgreSQL array
                     )
                 )
 

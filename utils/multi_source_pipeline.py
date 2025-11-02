@@ -385,7 +385,8 @@ def process_multi_source_pipeline(
                     chunks_data.append({
                         'text': node.get_content(),
                         'metadata': metadata_list[i],
-                        'namespace': namespace
+                        'namespace': namespace,
+                        'embedding': embeddings[i] if i < len(embeddings) else None  # Store embedding for metadata updates
                     })
                 
                 if preview_mode:
