@@ -190,15 +190,29 @@ def upload_to_pinecone(
             error_msg = str(e).lower()
             logger.error(f"Failed to upload batch {batch_num} to Pinecone: {e}")
             
-            # Classify error as transient or permanent
-            if any(keyword in error_msg for keyword in [
-                'rate limit', 'timeout', 'connection', 'network',
-                'unavailable', '503', '429', '502', '504'
+            # Check for specific permanent errors first
+            if 'dimension' in error_msg and 'does not match' in error_msg:
+                raise ValueError(
+                    f"Configuration error - Vector dimension mismatch in batch {batch_num}: {e}"
+                ) from e
+            elif '400' in error_msg or 'bad request' in error_msg:
+                raise ValueError(
+                    f"Invalid request to Pinecone in batch {batch_num}: {e}"
+                ) from e
+            elif '401' in error_msg or 'unauthorized' in error_msg or 'forbidden' in error_msg:
+                raise ValueError(
+                    f"Authentication error in batch {batch_num}: {e}"
+                ) from e
+            # Now check for transient errors (rate limits, network issues)
+            elif any(keyword in error_msg for keyword in [
+                'rate limit', '429', 'timeout', 'timed out',
+                'unavailable', '503', '502', '504'
             ]):
                 raise TransientError(
                     f"Network/rate limit error uploading batch {batch_num}/{len(vectors)//batch_size + 1}: {e}"
                 ) from e
             else:
+                # Unknown error - treat as permanent
                 raise ValueError(
                     f"Pinecone upload failed on batch {batch_num}: {e}"
                 ) from e
