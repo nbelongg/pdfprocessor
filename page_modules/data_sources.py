@@ -385,6 +385,102 @@ def _render_add_edit_source():
     
     st.markdown("---")
     
+    # Tag Mapping Overrides Section
+    st.subheader("🔄 Tag Mapping Overrides (Optional)")
+    st.info("By default, this data source uses tag mappings from the product configuration. Enable custom mappings below to override.")
+    
+    # Get current settings
+    current_custom_enabled = source_to_edit.get('custom_tag_mappings_enabled', False) if source_to_edit else False
+    current_tag_mappings = source_to_edit.get('tag_mappings', {}) if source_to_edit else {}
+    current_unmapped_behavior = source_to_edit.get('unmapped_tag_behavior', 'keep') if source_to_edit else 'keep'
+    
+    # Initialize session state for tag mapping overrides
+    if 'custom_tag_mappings_enabled' not in st.session_state:
+        st.session_state.custom_tag_mappings_enabled = current_custom_enabled
+    
+    if 'ds_tag_mappings' not in st.session_state:
+        st.session_state.ds_tag_mappings = current_tag_mappings or {}
+    
+    # Checkbox to enable custom mappings
+    custom_mappings_enabled = st.checkbox(
+        "Use custom tag mappings for this data source",
+        value=st.session_state.custom_tag_mappings_enabled,
+        key="enable_custom_mappings",
+        help="Enable to override product-level tag mappings with data source-specific mappings"
+    )
+    st.session_state.custom_tag_mappings_enabled = custom_mappings_enabled
+    
+    if custom_mappings_enabled:
+        # Unmapped tag behavior
+        ds_unmapped_behavior = st.selectbox(
+            "Unmapped Tags Behavior",
+            ["keep", "skip"],
+            index=0 if current_unmapped_behavior == 'keep' else 1,
+            help="'keep' preserves original tag names for unmapped tags, 'skip' removes them",
+            key="ds_unmapped_behavior"
+        )
+        
+        # Display current mappings
+        if st.session_state.ds_tag_mappings:
+            st.markdown("**Current Tag Mappings:**")
+            
+            # Create table view
+            for idx, (source_tag, internal_tag) in enumerate(st.session_state.ds_tag_mappings.items()):
+                col1, col2, col3 = st.columns([5, 5, 1])
+                with col1:
+                    st.text_input(
+                        "Source Tag",
+                        value=source_tag,
+                        key=f"ds_src_tag_{idx}",
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
+                with col2:
+                    st.text_input(
+                        "Internal Tag",
+                        value=internal_tag,
+                        key=f"ds_int_tag_{idx}",
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
+                with col3:
+                    if st.button("🗑️", key=f"delete_ds_mapping_{idx}"):
+                        del st.session_state.ds_tag_mappings[source_tag]
+                        st.rerun()
+        else:
+            st.info("No custom tag mappings configured yet")
+        
+        # Add new mapping
+        st.markdown("**Add New Mapping:**")
+        col1, col2, col3 = st.columns([5, 5, 2])
+        with col1:
+            new_ds_source_tag = st.text_input(
+                "Source Tag (from Google Sheets)",
+                key="new_ds_source_tag",
+                placeholder="e.g., MBS (Marketing and Behavior Science 101)"
+            )
+        with col2:
+            new_ds_internal_tag = st.text_input(
+                "Internal Tag",
+                key="new_ds_internal_tag",
+                placeholder="e.g., C2: MBS and GPP"
+            )
+        with col3:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacer
+            if st.button("➕ Add", key="add_ds_mapping", use_container_width=True):
+                if new_ds_source_tag and new_ds_internal_tag:
+                    if new_ds_source_tag.strip() and new_ds_internal_tag.strip():
+                        st.session_state.ds_tag_mappings[new_ds_source_tag.strip()] = new_ds_internal_tag.strip()
+                        st.rerun()
+                    else:
+                        st.error("Source and internal tags cannot be empty")
+                else:
+                    st.error("Please provide both source and internal tag names")
+    else:
+        ds_unmapped_behavior = None
+    
+    st.markdown("---")
+    
     col_save, col_cancel = st.columns(2)
     
     with col_save:
@@ -397,6 +493,21 @@ def _render_add_edit_source():
                 st.error("Drive Link column mapping is required")
             else:
                 try:
+                    # Prepare tag mapping data
+                    tag_mapping_data = {}
+                    if custom_mappings_enabled:
+                        tag_mapping_data = {
+                            'custom_tag_mappings_enabled': True,
+                            'tag_mappings': st.session_state.get('ds_tag_mappings', {}),
+                            'unmapped_tag_behavior': ds_unmapped_behavior
+                        }
+                    else:
+                        tag_mapping_data = {
+                            'custom_tag_mappings_enabled': False,
+                            'tag_mappings': None,
+                            'unmapped_tag_behavior': None
+                        }
+                    
                     if edit_mode:
                         update_data_source(
                             st.session_state.edit_source_id,
@@ -405,7 +516,8 @@ def _render_add_edit_source():
                             sheet_tab=source_tab,
                             topic=source_topic,
                             default_namespace=source_namespace,
-                            product_id=selected_product_id
+                            product_id=selected_product_id,
+                            **tag_mapping_data
                         )
                         source_id = st.session_state.edit_source_id
                     else:
@@ -414,6 +526,9 @@ def _render_add_edit_source():
                             source_topic, source_namespace,
                             product_id=selected_product_id
                         )
+                        # Update with tag mapping data after creation
+                        if tag_mapping_data:
+                            update_data_source(source_id, **tag_mapping_data)
                     
                     for role, column in st.session_state.column_mappings_temp.items():
                         is_req = role == 'drive_link'
@@ -442,6 +557,10 @@ def _render_add_edit_source():
                         del st.session_state.column_mappings_temp
                     if 'tag_configs_temp' in st.session_state:
                         del st.session_state.tag_configs_temp
+                    if 'ds_tag_mappings' in st.session_state:
+                        del st.session_state.ds_tag_mappings
+                    if 'custom_tag_mappings_enabled' in st.session_state:
+                        del st.session_state.custom_tag_mappings_enabled
                     
                     st.session_state.data_sources = get_data_sources()
                     st.rerun()
