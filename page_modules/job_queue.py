@@ -369,7 +369,7 @@ def _retry_failed_job(job: Dict):
                 False  # preview_mode=False
             ],
             task_id=retry_job_id,
-            queue='celery'
+            queue='batch_processing'  # Must match task_routes in celeryconfig.py
         )
         
         success_message(f"✅ Retry job queued! Processing {len(rows_to_process)} papers in background.")
@@ -622,7 +622,7 @@ def _trigger_processing_job(
                 False  # preview_mode=False
             ],
             task_id=job_id,
-            queue='celery'
+            queue='batch_processing'  # Must match task_routes in celeryconfig.py
         )
         
         return {

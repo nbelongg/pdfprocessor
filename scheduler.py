@@ -747,7 +747,7 @@ def run_scheduled_job(scheduled_job: Dict[str, Any]) -> Dict[str, Any]:
         task = process_batch_task.apply_async(
             args=[source_id, new_indices, config, False],
             task_id=job_id,
-            queue='celery'
+            queue='batch_processing'  # Must match task_routes in celeryconfig.py
         )
         
         # Wait for task completion (with timeout) to get results for scheduler logging
