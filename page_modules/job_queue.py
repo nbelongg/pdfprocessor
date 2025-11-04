@@ -606,14 +606,21 @@ def _trigger_processing_job(
         job_id = str(uuid.uuid4())
         
         # Create Celery job record with pending status
-        create_celery_job(
-            task_id=job_id,
-            task_name=f"On-Demand: {source['name']}",
-            source_id=source['id'],
-            submitted_by='manual'
-        )
+        logger.info(f"Creating Celery job record: job_id={job_id}, source_id={source['id']}, name={source['name']}")
+        try:
+            db_job_id = create_celery_job(
+                task_id=job_id,
+                task_name=f"On-Demand: {source['name']}",
+                source_id=source['id'],
+                submitted_by='manual'
+            )
+            logger.info(f"✅ Celery job created successfully: db_id={db_job_id}, task_id={job_id}")
+        except Exception as create_error:
+            logger.error(f"❌ FAILED to create Celery job: {create_error}")
+            raise
         
         # Submit async task to Celery (non-blocking)
+        logger.info(f"Submitting task to batch_processing queue: source_id={source['id']}, rows={len(rows_to_process)}")
         process_batch_task.apply_async(
             args=[
                 source['id'],
