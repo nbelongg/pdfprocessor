@@ -18,8 +18,10 @@ from config.constants import (
 from page_modules import home, products, data_sources, select_files, preview
 from page_modules import process, job_queue, monitoring, status, history, search, metadata_management
 
-# Import database utilities for sidebar stats
+# Import database utilities for sidebar stats and initialization
 from utils.database import get_products, get_data_sources
+from utils.db.products import init_products_table
+from utils.db.jobs import init_celery_tables
 
 
 # ============================================
@@ -56,6 +58,18 @@ def init_session_state():
 
 
 init_session_state()
+
+
+# ============================================
+# DATABASE INITIALIZATION
+# ============================================
+
+# Initialize database tables on startup
+try:
+    init_products_table()
+    init_celery_tables()
+except Exception as e:
+    st.error(f"Database initialization error: {str(e)}")
 
 
 # ============================================
