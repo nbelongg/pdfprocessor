@@ -9,6 +9,7 @@ This module handles:
 
 import logging
 from typing import Dict, List, Optional, Any
+from psycopg2.extras import Json
 
 from utils.exceptions import DatabaseError, DatabaseTransientError
 from utils.db_utils import get_db_transaction, with_db_error_handling
@@ -73,10 +74,21 @@ def update_data_source(source_id: int, **kwargs):
             set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
             values = []
             
-            for key in ['name', 'sheet_url', 'sheet_tab', 'topic', 'default_namespace', 'active', 'product_id']:
+            allowed_fields = [
+                'name', 'sheet_url', 'sheet_tab', 'topic', 'default_namespace', 
+                'active', 'product_id', 'custom_tag_mappings_enabled', 
+                'tag_mappings', 'unmapped_tag_behavior'
+            ]
+            
+            for key in allowed_fields:
                 if key in kwargs:
-                    set_clauses.append(f"{key} = %s")
-                    values.append(kwargs[key])
+                    # Handle JSON fields
+                    if key == 'tag_mappings' and kwargs[key] is not None:
+                        set_clauses.append(f"{key} = %s")
+                        values.append(Json(kwargs[key]))
+                    else:
+                        set_clauses.append(f"{key} = %s")
+                        values.append(kwargs[key])
             
             values.append(source_id)
             

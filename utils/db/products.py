@@ -167,13 +167,13 @@ def update_product(
                 'pinecone_environment', 'default_namespace',
                 'embedding_dimension', 'tagging_enabled',
                 'tagging_model', 'tagging_prompt_template',
-                'tagging_config'
+                'tagging_config', 'tag_mappings', 'unmapped_tag_behavior'
             ]
             
             for key in allowed_fields:
                 if key in kwargs:
                     # Handle JSON fields
-                    if key == 'tagging_config' and kwargs[key] is not None:
+                    if key in ['tagging_config', 'tag_mappings'] and kwargs[key] is not None:
                         set_clauses.append(f"{key} = %s")
                         values.append(Json(kwargs[key]))
                     else:
