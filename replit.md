@@ -40,11 +40,19 @@ The application features a modular architecture:
 6.  **Embedding Layer**: OpenAI embeddings (text-embedding-3-small, text-embedding-3-large).
 7.  **Storage Layer**: Pinecone vector database (serverless) for vector storage, supporting namespaces and batch upsert, with tags included in vector metadata.
 
-### Background Job Queue System (Celery)
+### Background Job Queue System (Celery) - Async Architecture
 -   **Message Broker**: Redis (Upstash) for task queue and result backend.
 -   **Workers**: Concurrent Celery workers with exponential backoff retry logic.
--   **Job Tracking**: PostgreSQL tables (`celery_jobs`) for status, progress, and results.
--   **Monitoring**: Real-time job queue UI.
+-   **Job Tracking**: PostgreSQL `celery_jobs` table for unified status, progress, and results tracking.
+-   **Monitoring**: Real-time job queue UI with auto-refresh.
+-   **Async Processing Model** (November 2025 Refactor):
+    - **UI Triggers**: All manual job triggers use `process_batch_task.apply_async()` for non-blocking submission
+    - **Retry Mechanism**: Failed job retries submit new async tasks instead of blocking UI
+    - **Scheduler Integration**: Scheduled jobs enqueue Celery tasks instead of inline processing
+    - **Status Transitions**: Proper pending → running → completed/failed flow with real-time updates
+    - **Progress Tracking**: Live progress updates (current/total/message) stored in `celery_jobs` table
+    - **Immediate Response**: All job submissions return instantly with "Job queued!" message
+    - **Database Consistency**: Single `celery_jobs` table for all UI-visible job tracking
 
 ### Configuration & Data Flow
 -   Environment variables for API keys and Google Cloud service account JSON.
