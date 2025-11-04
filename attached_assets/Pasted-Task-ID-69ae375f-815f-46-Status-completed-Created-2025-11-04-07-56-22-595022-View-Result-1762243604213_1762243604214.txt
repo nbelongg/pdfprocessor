@@ -1,0 +1,403 @@
+Task ID: 69ae375f-815f-46...
+
+Status: completed
+
+Created: 2025-11-04 07:56:22.595022
+
+📊 View Result
+
+{
+"job_id":"45faae16-fb2e-42df-9d1f-d07afc97ad10"
+"details":[
+0:{
+"row":0
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "2017_State_of_Youth_Volunteering_in_India_UNV.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+1:{
+"row":1
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "behavsci-06-00020.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+2:{
+"row":2
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Effect of Self-Efficacy and Emotional Maturity on Prosocial.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+3:{
+"row":3
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "bathini-vohra-2014-volunteering-the-role-of-individual-level-psychological-variables.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+4:{
+"row":4
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Youth Volunteerism What do Young People want from.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+5:{
+"row":5
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Final-Grant-Thornton-CRY-Volunteering-in-India-Report.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+6:{
+"row":6
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "NSS joining motivations.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+7:{
+"row":7
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Students’ Perception and Involvement in Volunteering Services.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+8:{
+"row":8
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "volunteering in india_ i volunteer.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+9:{
+"row":9
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Challenge-Paper-Wellbeing.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+10:{
+"row":10
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Online Altruism and Prosocial Behavior in Youth.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+11:{
+"row":11
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "15-Rajeev.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+12:{
+"row":12
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Volunteerism_among_Gen_Y_An_Indian_Inves (1).pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+13:{
+"row":13
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "pallitative care volunteersim.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+14:{
+"row":14
+"error":"Network/rate limit error uploading batch 1/1: (400)
+Reason: Bad Request
+HTTP response headers: HTTPHeaderDict({'Date': 'Tue, 04 Nov 2025 07:57:34 GMT', 'Content-Type': 'application/json', 'Content-Length': '104', 'Connection': 'keep-alive', 'x-pinecone-request-latency-ms': '261', 'x-pinecone-request-id': '2567591768637003649', 'x-envoy-upstream-service-time': '104', 'server': 'envoy'})
+HTTP response body: {"code":3,"message":"Vector dimension 1536 does not match the dimension of the index 1024","details":[]}
+"
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"error"
+}
+15:{
+"row":15
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Social Media Influence on Emerging Adults  Prosocial Behavior  A Systematic Review.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+16:{
+"row":16
+"error":"Network/rate limit error uploading batch 1/1: (400)
+Reason: Bad Request
+HTTP response headers: HTTPHeaderDict({'Date': 'Tue, 04 Nov 2025 07:58:27 GMT', 'Content-Type': 'application/json', 'Content-Length': '104', 'Connection': 'keep-alive', 'x-pinecone-request-latency-ms': '244', 'x-pinecone-request-id': '9204801208228911463', 'x-envoy-upstream-service-time': '22', 'server': 'envoy'})
+HTTP response body: {"code":3,"message":"Vector dimension 1536 does not match the dimension of the index 1024","details":[]}
+"
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"error"
+}
+17:{
+"row":17
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "From volunteers to engaged citizens _ IDR.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+18:{
+"row":18
+"error":"Network/rate limit error uploading batch 1/1: (400)
+Reason: Bad Request
+HTTP response headers: HTTPHeaderDict({'Date': 'Tue, 04 Nov 2025 07:59:40 GMT', 'Content-Type': 'application/json', 'Content-Length': '104', 'Connection': 'keep-alive', 'x-pinecone-request-latency-ms': '320', 'x-pinecone-request-id': '3773605706992424354', 'x-envoy-upstream-service-time': '32', 'server': 'envoy'})
+HTTP response body: {"code":3,"message":"Vector dimension 1536 does not match the dimension of the index 1024","details":[]}
+"
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"error"
+}
+19:{
+"row":19
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Enhancing prosocial behavior through anthropomorphized brand messaging in cause related marketing.pd""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+20:{
+"row":20
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "UNICEF-Guide-to-Strategic_Communication_for_Behaviour_and_Social_Change.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+21:{
+"row":21
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "video engagement on climate effectiveness.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+22:{
+"row":22
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "panchtantra.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+23:{
+"row":23
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "empowering.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+24:{
+"row":24
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "impact_of_social_media_on_forming_individual_s.10.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+25:{
+"row":25
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "impact of colour and shape.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+26:{
+"row":26
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "VISUAL SOCIAL AWARENESS IN INDIAN SOCIETY.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+27:{
+"row":27
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "influence of insta inlfuencer.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+28:{
+"row":28
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "DIMENSIONS OF GIVING AND.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+29:{
+"row":29
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Perception_of_Indian_Youth_on_Digital_Ac.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+30:{
+"row":30
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Measuring the psychological drivers of participation in collective action to address violence agains""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+31:{
+"row":31
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "enablers and barriers.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+32:{
+"row":32
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "lessons learnt from community volunteers.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+33:{
+"row":33
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "A qualitative assessment of barriers and facilitators of telemedicine volunteerism during the COVID-""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+34:{
+"row":34
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Determinants of Motivation for Mentoring AmongAdults Volunteerin.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+35:{
+"row":35
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Predictors of Compassion Fatigue and Compassion Satisfaction in Social Workers  A Quantitative Study""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+36:{
+"row":36
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Peer presence increases adolescents prosocial.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+37:{
+"row":37
+"error":"Network/rate limit error uploading batch 1/1: (400)
+Reason: Bad Request
+HTTP response headers: HTTPHeaderDict({'Date': 'Tue, 04 Nov 2025 08:00:49 GMT', 'Content-Type': 'application/json', 'Content-Length': '104', 'Connection': 'keep-alive', 'x-pinecone-request-latency-ms': '159', 'x-pinecone-request-id': '7344502537069102859', 'x-envoy-upstream-service-time': '25', 'server': 'envoy'})
+HTTP response body: {"code":3,"message":"Vector dimension 1536 does not match the dimension of the index 1024","details":[]}
+"
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"error"
+}
+38:{
+"row":38
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Using Social Media to Drive Greater Teen Engagement in.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+39:{
+"row":39
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Social Media and Adolescents’ Prosocial Behavior.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+40:{
+"row":40
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "How do social media influencers change adolescents’ behavior? An evidence from Middle East Countries""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+41:{
+"row":41
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "volunteering in south asia and south east.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+42:{
+"row":42
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Youth community bangladesh.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+43:{
+"row":43
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "The Effects of Volunteer Management and Personality.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+44:{
+"row":44
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Equity and empowerment effects.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+45:{
+"row":45
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "volunteer retention.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+46:{
+"row":46
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "The impact of volunteer management practices on volunteer.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+47:{
+"row":47
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Choice Architecture 2.0_ How People Interpret and Make Sense of Nudges - Behavioral Scientist.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+48:{
+"row":48
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Opt-out choice framing attenuates gender differences in the decision to compete in the laboratory an""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+49:{
+"row":49
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "EnhancedActiveChoice.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+50:{
+"row":50
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Putting_Public_Policy_Defaults_to_the_Te.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+51:{
+"row":51
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "The-Global-Volunteering-Standard-EN-1.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+52:{
+"row":52
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Establishing a Youth Volunteer Scheme.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+53:{
+"row":53
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "mertens-et-al-2021-the-effectiveness-of-nudging-a-meta-analysis-of-choice-architecture-interventions""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+54:{
+"row":54
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Reimagining the Role of Friction in.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+55:{
+"row":55
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Psychology and Marketing - 2024 - Padigar - Good  and  bad  frictions in customer experience  Concep""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+56:{
+"row":56
+"reason":"No valid Drive link (LOOKS LIKE FILENAME). Column: "Google Drive Link", Value: "Volunteer Engageability.pdf""
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+57:{
+"row":57
+"reason":"No valid Drive link (UNKNOWN FORMAT). Column: "Google Drive Link", Value: """
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+58:{
+"row":58
+"reason":"No valid Drive link (UNKNOWN FORMAT). Column: "Google Drive Link", Value: """
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+59:{
+"row":59
+"reason":"No valid Drive link (UNKNOWN FORMAT). Column: "Google Drive Link", Value: """
+"source":"ABCD.GoogleSheets.2025.Volunteering"
+"status":"skipped"
+}
+]
+"total_pdfs":0
+"total_chunks":0
+"preview_chunks":NULL
+"vectors_stored":0
+"total_embeddings":0
+"sources_processed":{
+"ABCD.GoogleSheets.2025.Volunteering":{
+"source_id":3
+"source_name":"ABCD.GoogleSheets.2025.Volunteering"
+"chunks_created":0
+"papers_processed":0
+"last_row_processed":0
+}
+}
+}
