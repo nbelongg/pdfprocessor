@@ -727,21 +727,40 @@ def run_scheduled_job(scheduled_job: Dict[str, Any]) -> Dict[str, Any]:
         # Build configuration
         config = build_processing_config(source_info, schedule_config, google_credentials)
         
-        # Prepare source configs for pipeline
-        source_configs = [{
-            'source_id': source_id,
-            'data': sheet_data,
-            'selected_indices': new_indices
-        }]
+        # Submit async Celery task for processing
+        from tasks import process_batch_task
+        from utils.db.jobs import create_celery_job
+        import uuid
         
-        # Run processing pipeline
-        logger.info("Starting processing pipeline...")
-        results = process_multi_source_pipeline(
-            source_configs=source_configs,
-            config=config,
-            progress_callback=None,
-            preview_mode=False
+        job_id = str(uuid.uuid4())
+        
+        # Create Celery job record
+        create_celery_job(
+            task_id=job_id,
+            task_name=f"Scheduled: {scheduled_job['job_name']}",
+            source_id=source_id,
+            submitted_by='scheduler'
         )
+        
+        # Submit async task to Celery (non-blocking)
+        logger.info(f"Submitting async processing task (job_id: {job_id})...")
+        task = process_batch_task.apply_async(
+            args=[source_id, new_indices, config, False],
+            task_id=job_id,
+            queue='celery'
+        )
+        
+        # Wait for task completion (with timeout) to get results for scheduler logging
+        logger.info(f"Waiting for task completion (max 2 hours)...")
+        try:
+            results = task.get(timeout=7200)  # 2 hour timeout
+        except Exception as e:
+            logger.error(f"Task execution failed or timed out: {e}")
+            return {
+                'status': 'failed',
+                'processing_job_id': job_id,
+                'error': f"Task failed: {str(e)}"
+            }
         
         # Calculate metrics
         details = results.get('details', [])

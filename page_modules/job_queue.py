@@ -345,21 +345,14 @@ def _retry_failed_job(job: Dict):
         config = get_product_config_from_source(source_id)
         config['google_credentials'] = google_credentials
         
-        # Prepare for pipeline
-        source_configs = [{
-            'source_id': source_id,
-            'data': sheet_data,
-            'selected_indices': rows_to_process
-        }]
-        
-        # Import and trigger pipeline
-        from utils.multi_source_pipeline import process_multi_source_pipeline
+        # Trigger async Celery task for retry
         import uuid
+        from tasks import process_batch_task
+        from utils.db.jobs import create_celery_job
         
         retry_job_id = str(uuid.uuid4())
         
-        # Create Celery job record
-        from utils.db.jobs import create_celery_job
+        # Create Celery job record with pending status
         create_celery_job(
             task_id=retry_job_id,
             task_name=f"Retry: {source['name']}",
@@ -367,24 +360,20 @@ def _retry_failed_job(job: Dict):
             submitted_by='retry'
         )
         
-        # Process synchronously
-        with st.spinner(f"Processing {len(rows_to_process)} papers..."):
-            results = process_multi_source_pipeline(
-                source_configs=source_configs,
-                config=config,
-                progress_callback=None,
-                preview_mode=False
-            )
-        
-        # Update job status
-        from utils.db.jobs import update_celery_job_status
-        update_celery_job_status(
-            retry_job_id,
-            'completed',
-            result=results
+        # Submit async task to Celery (non-blocking)
+        process_batch_task.apply_async(
+            args=[
+                source_id,
+                rows_to_process,
+                config,
+                False  # preview_mode=False
+            ],
+            task_id=retry_job_id,
+            queue='celery'
         )
         
-        success_message(f"✅ Retry successful! Processed {results.get('total_pdfs', 0)} papers.")
+        success_message(f"✅ Retry job queued! Processing {len(rows_to_process)} papers in background.")
+        success_message(f"Job ID: {retry_job_id[:8]}... - Monitor progress in 'Monitor Jobs' tab")
         st.rerun()
         
     except Exception as e:
@@ -609,22 +598,14 @@ def _trigger_processing_job(
         config = get_product_config_from_source(source['id'])
         config['google_credentials'] = google_credentials
         
-        # Prepare for pipeline
-        source_configs = [{
-            'source_id': source['id'],
-            'data': sheet_data,
-            'selected_indices': rows_to_process
-        }]
-        
-        # Import and trigger pipeline
-        from utils.multi_source_pipeline import process_multi_source_pipeline
-        
-        # Trigger async processing
+        # Trigger async Celery task for processing
         import uuid
+        from tasks import process_batch_task
+        from utils.db.jobs import create_celery_job
+        
         job_id = str(uuid.uuid4())
         
-        # Create Celery job record
-        from utils.db.jobs import create_celery_job
+        # Create Celery job record with pending status
         create_celery_job(
             task_id=job_id,
             task_name=f"On-Demand: {source['name']}",
@@ -632,20 +613,16 @@ def _trigger_processing_job(
             submitted_by='manual'
         )
         
-        # For now, process synchronously (could be made async with Celery later)
-        results = process_multi_source_pipeline(
-            source_configs=source_configs,
-            config=config,
-            progress_callback=None,
-            preview_mode=False
-        )
-        
-        # Update job status
-        from utils.db.jobs import update_celery_job_status
-        update_celery_job_status(
-            job_id,
-            'completed',
-            result=results
+        # Submit async task to Celery (non-blocking)
+        process_batch_task.apply_async(
+            args=[
+                source['id'],
+                rows_to_process,
+                config,
+                False  # preview_mode=False
+            ],
+            task_id=job_id,
+            queue='celery'
         )
         
         return {

@@ -415,12 +415,20 @@ def process_batch_task(
     Returns:
         Dictionary with batch processing results
     """
-    job_id = str(uuid.uuid4())
+    # Use Celery's task ID (already created in celery_jobs table)
+    from utils.db.jobs import update_celery_job_status
+    job_id = self.request.id
     
     try:
+        # Update status to 'running' in celery_jobs table
         if not preview_mode:
-            create_processing_job(job_id, config)
-            update_job_status(job_id, 'running')
+            update_celery_job_status(
+                job_id,
+                'running',
+                progress_current=0,
+                progress_total=len(selected_indices),
+                progress_message='Starting batch processing...'
+            )
         
         source_info = get_data_source(source_id)
         
@@ -428,7 +436,7 @@ def process_batch_task(
             error_msg = f'Data source {source_id} not found'
             logger.error(error_msg)
             if not preview_mode:
-                update_job_status(job_id, 'error', error_message=error_msg)
+                update_celery_job_status(job_id, 'failed', error_message=error_msg)
             return {
                 'status': 'error',
                 'job_id': job_id,
@@ -553,12 +561,18 @@ def process_batch_task(
                         completed += 1
                         pending_tasks.remove(task_info)
                         
-                        # Update progress
-                        self.update_progress(
-                            completed,
-                            total_tasks,
-                            f"Completed {completed}/{total_tasks} PDFs..."
-                        )
+                        # Update progress in both Celery state and database
+                        progress_msg = f"Completed {completed}/{total_tasks} PDFs..."
+                        self.update_progress(completed, total_tasks, progress_msg)
+                        
+                        if not preview_mode:
+                            update_celery_job_status(
+                                job_id,
+                                'running',
+                                progress_current=completed,
+                                progress_total=total_tasks,
+                                progress_message=progress_msg
+                            )
                         
                     except Exception as e:
                         logger.error(f"Error getting result for {task_info['file_id']}: {str(e)}")
@@ -571,12 +585,18 @@ def process_batch_task(
                         completed += 1
                         pending_tasks.remove(task_info)
                         
-                        # Update progress
-                        self.update_progress(
-                            completed,
-                            total_tasks,
-                            f"Completed {completed}/{total_tasks} PDFs..."
-                        )
+                        # Update progress in both Celery state and database
+                        progress_msg = f"Completed {completed}/{total_tasks} PDFs..."
+                        self.update_progress(completed, total_tasks, progress_msg)
+                        
+                        if not preview_mode:
+                            update_celery_job_status(
+                                job_id,
+                                'running',
+                                progress_current=completed,
+                                progress_total=total_tasks,
+                                progress_message=progress_msg
+                            )
             
             # Small delay before next polling iteration to avoid busy waiting
             if pending_tasks:
@@ -602,15 +622,14 @@ def process_batch_task(
         self.update_progress(total_tasks, total_tasks, "Batch processing completed")
         
         if not preview_mode:
-            update_job_status(
+            update_celery_job_status(
                 job_id,
                 'completed',
-                total_pdfs=results['total_pdfs'],
-                total_chunks=results['total_chunks'],
-                vectors_stored=results['vectors_stored']
+                progress_current=total_tasks,
+                progress_total=total_tasks,
+                progress_message=f"Completed! Processed {results['total_pdfs']} PDFs",
+                result=results
             )
-        
-        self.update_progress(total_files, total_files, "Batch processing completed")
         
         return results
         
@@ -620,7 +639,11 @@ def process_batch_task(
         logger.warning(f"{error_msg} - will retry")
         
         if not preview_mode:
-            update_job_status(job_id, 'running', error_message=f"Retrying after: {str(e)}")
+            update_celery_job_status(
+                job_id,
+                'running',
+                progress_message=f"Retrying after: {str(e)}"
+            )
         
         raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
         
@@ -630,7 +653,7 @@ def process_batch_task(
         logger.error(f"{error_msg}\n{traceback.format_exc()}")
         
         if not preview_mode:
-            update_job_status(job_id, 'error', error_message=str(e))
+            update_celery_job_status(job_id, 'failed', error_message=str(e))
         
         return {
             'status': 'error',
