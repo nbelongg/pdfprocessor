@@ -390,9 +390,9 @@ def _render_add_edit_source():
     st.info("By default, this data source uses tag mappings from the product configuration. Enable custom mappings below to override.")
     
     # Get current settings
-    current_custom_enabled = source_to_edit.get('custom_tag_mappings_enabled', False) if source_to_edit else False
-    current_tag_mappings = source_to_edit.get('tag_mappings', {}) if source_to_edit else {}
-    current_unmapped_behavior = source_to_edit.get('unmapped_tag_behavior', 'keep') if source_to_edit else 'keep'
+    current_custom_enabled = editing_source.get('custom_tag_mappings_enabled', False) if editing_source else False
+    current_tag_mappings = editing_source.get('tag_mappings', {}) if editing_source else {}
+    current_unmapped_behavior = editing_source.get('unmapped_tag_behavior', 'keep') if editing_source else 'keep'
     
     # Initialize session state for tag mapping overrides
     if 'custom_tag_mappings_enabled' not in st.session_state:
