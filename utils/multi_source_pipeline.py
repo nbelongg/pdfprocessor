@@ -8,6 +8,7 @@ import uuid
 import logging
 from utils.google_sheets import extract_file_id_from_drive_link, extract_tags_from_row
 from utils.row_identifier import dataframe_index_to_sheet_row
+from utils.tag_mapper import apply_tag_mappings, resolve_tag_mapping_config
 
 logger = logging.getLogger(__name__)
 from utils.google_drive import download_pdf_from_drive, get_file_metadata
@@ -286,7 +287,16 @@ def process_multi_source_pipeline(
                     logger.info(f"📋 Found {len(tag_configs) if tag_configs else 0} tag configurations for source {source_id}")
                     if tag_configs:
                         spreadsheet_tags = extract_tags_from_row(row, tag_configs, column_mappings)
-                        logger.info(f"🏷️  Extracted {len(spreadsheet_tags)} tags from spreadsheet: {spreadsheet_tags}")
+                        logger.info(f"🏷️  Extracted {len(spreadsheet_tags)} raw tags from spreadsheet: {spreadsheet_tags}")
+                        
+                        # Apply tag mappings (product-level or data source-level)
+                        tag_mappings, unmapped_behavior = resolve_tag_mapping_config(product_config, source_info)
+                        if tag_mappings:
+                            original_count = len(spreadsheet_tags)
+                            spreadsheet_tags = apply_tag_mappings(spreadsheet_tags, tag_mappings, unmapped_behavior)
+                            logger.info(f"🔄 Applied tag mappings: {original_count} tags → {len(spreadsheet_tags)} tags: {spreadsheet_tags}")
+                        else:
+                            logger.debug("No tag mappings configured, using original tags")
                     else:
                         logger.info(f"📋 No tag configurations found for source {source_id}")
                 except Exception as e:
