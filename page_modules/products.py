@@ -96,6 +96,13 @@ def _render_product_card(product: dict):
             st.markdown(f"- Environment: {product.get('pinecone_environment', 'us-east-1')}")
             st.markdown(f"- Namespace: {product.get('default_namespace', 'default')}")
         
+        # Tag mappings info
+        tag_mappings = product.get('tag_mappings', {}) or {}
+        if tag_mappings:
+            st.markdown("**Tag Mappings:**")
+            st.markdown(f"- {len(tag_mappings)} mapping(s) configured")
+            st.markdown(f"- Unmapped behavior: {product.get('unmapped_tag_behavior', 'keep')}")
+        
         # Action buttons
         col_edit, col_delete, col_toggle = st.columns(3)
         with col_edit:
@@ -345,6 +352,79 @@ def _render_add_edit_product():
             tagging_model = DEFAULT_TAGGING_MODEL
             tagging_prompt = None
     
+    # Tag mapping settings
+    with st.expander("🔄 Tag Mappings", expanded=False):
+        info_box("Map spreadsheet column names to standardized internal tags. These mappings apply to all data sources using this product.")
+        
+        # Initialize tag mappings state
+        if 'tag_mappings' not in st.session_state:
+            st.session_state.tag_mappings = product_to_edit.get('tag_mappings', {}) if product_to_edit else {}
+        
+        # Unmapped tag behavior
+        unmapped_behavior = st.selectbox(
+            "Unmapped Tags Behavior",
+            ["keep", "skip"],
+            index=0 if (product_to_edit.get('unmapped_tag_behavior', 'keep') if product_to_edit else 'keep') == 'keep' else 1,
+            help="'keep' preserves original tag names for unmapped tags, 'skip' removes them"
+        )
+        
+        # Display current mappings
+        if st.session_state.tag_mappings:
+            st.markdown("**Current Tag Mappings:**")
+            
+            # Create table view
+            for idx, (source_tag, internal_tag) in enumerate(st.session_state.tag_mappings.items()):
+                col1, col2, col3 = st.columns([5, 5, 1])
+                with col1:
+                    st.text_input(
+                        "Source Tag",
+                        value=source_tag,
+                        key=f"src_tag_{idx}",
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
+                with col2:
+                    st.text_input(
+                        "Internal Tag",
+                        value=internal_tag,
+                        key=f"int_tag_{idx}",
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
+                with col3:
+                    if st.button("🗑️", key=f"delete_mapping_{idx}"):
+                        del st.session_state.tag_mappings[source_tag]
+                        st.rerun()
+        else:
+            st.info("No tag mappings configured yet")
+        
+        # Add new mapping
+        st.markdown("**Add New Mapping:**")
+        col1, col2, col3 = st.columns([5, 5, 2])
+        with col1:
+            new_source_tag = st.text_input(
+                "Source Tag (from Google Sheets)",
+                key="new_source_tag",
+                placeholder="e.g., MBS (Marketing and Behavior Science 101)"
+            )
+        with col2:
+            new_internal_tag = st.text_input(
+                "Internal Tag",
+                key="new_internal_tag",
+                placeholder="e.g., C2: MBS and GPP"
+            )
+        with col3:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacer
+            if st.button("➕ Add", use_container_width=True):
+                if new_source_tag and new_internal_tag:
+                    if new_source_tag.strip() and new_internal_tag.strip():
+                        st.session_state.tag_mappings[new_source_tag.strip()] = new_internal_tag.strip()
+                        st.rerun()
+                    else:
+                        error_message("Source and internal tags cannot be empty")
+                else:
+                    error_message("Please provide both source and internal tag names")
+    
     # Save/Cancel buttons
     col_save, col_cancel = st.columns(2)
     
@@ -379,7 +459,9 @@ def _render_add_edit_product():
                         "default_namespace": default_namespace,
                         "tagging_enabled": tagging_enabled,
                         "tagging_model": tagging_model,
-                        "tagging_prompt_template": tagging_prompt
+                        "tagging_prompt_template": tagging_prompt,
+                        "tag_mappings": st.session_state.get('tag_mappings', {}),
+                        "unmapped_tag_behavior": unmapped_behavior
                     }
                     
                     if edit_mode:
