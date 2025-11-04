@@ -68,10 +68,36 @@ def init_products_table():
                 ALTER COLUMN google_credentials_secret TYPE TEXT
             """)
             
+            # Add AI tagging columns
+            cur.execute("""
+                ALTER TABLE products 
+                ADD COLUMN IF NOT EXISTS tagging_enabled BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS tagging_model VARCHAR(100) DEFAULT 'gpt-4o-mini',
+                ADD COLUMN IF NOT EXISTS tagging_prompt_template TEXT,
+                ADD COLUMN IF NOT EXISTS tagging_config JSONB,
+                ADD COLUMN IF NOT EXISTS num_workers INTEGER DEFAULT 4,
+                ADD COLUMN IF NOT EXISTS page_error_tolerance NUMERIC(3, 2) DEFAULT 0.05
+            """)
+            
+            # Add tag mapping columns
+            cur.execute("""
+                ALTER TABLE products 
+                ADD COLUMN IF NOT EXISTS tag_mappings JSONB DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS unmapped_tag_behavior VARCHAR(10) DEFAULT 'keep'
+            """)
+            
             # Add product_id to data_sources if not exists
             cur.execute("""
                 ALTER TABLE data_sources 
                 ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES products(id) ON DELETE SET NULL
+            """)
+            
+            # Add tag mapping columns to data_sources
+            cur.execute("""
+                ALTER TABLE data_sources 
+                ADD COLUMN IF NOT EXISTS custom_tag_mappings_enabled BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS tag_mappings JSONB,
+                ADD COLUMN IF NOT EXISTS unmapped_tag_behavior VARCHAR(10) DEFAULT 'keep'
             """)
 
 
