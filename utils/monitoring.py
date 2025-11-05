@@ -160,13 +160,15 @@ def save_to_failed_queue(
         task_args: Task arguments for potential retry
         retry_count: Number of retries attempted
     """
+    from psycopg2.extras import Json
+    
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO failed_tasks 
                 (task_id, job_id, task_name, error_message, error_type, task_args, retry_count, last_retry_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-            """, (task_id, job_id, task_name, error_message, error_type, task_args, retry_count))
+            """, (task_id, job_id, task_name, error_message, error_type, Json(task_args) if task_args else None, retry_count))
             
             logger.error(
                 f"❌ DEAD LETTER QUEUE: Task {task_name} (ID: {task_id}) failed after {retry_count} retries. "
