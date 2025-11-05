@@ -150,7 +150,8 @@ PAGE_RENDERERS = {
     "metadata_management": metadata_management.render,
     "status": status.render,
     "history": history.render,
-    "search": search.render
+    "search": search.render,
+    "diagnostics": diagnostics.render
 }
 
 # Render the selected page
