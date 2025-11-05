@@ -49,12 +49,14 @@ def track_api_cost(
         track_api_cost(job_id, 'llamaparse', 42, 0.42, {'mode': 'premium'})
         track_api_cost(job_id, 'openai_embeddings', 15000, 0.0003)
     """
+    from psycopg2.extras import Json
+    
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO api_costs (job_id, service, units, cost_usd, details)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (job_id, service, units, cost_usd, details))
+            """, (job_id, service, units, cost_usd, Json(details) if details else None))
             
             logger.info(f"💰 Cost tracked: {service} = ${cost_usd:.4f} ({units} units) for job {job_id}")
 
