@@ -10,50 +10,39 @@ Your **production** (`.replit.app`) and **development** environments were sharin
 4. Dev worker can't find the data source in dev database
 5. Production job stays stuck in "pending"
 
-## Solution
+## Solution ✅
 
-Separate production and dev by using different Redis database numbers:
+The system now **automatically detects** the environment and uses different Redis databases:
 - **Development**: Redis database `0` (default)
-- **Production**: Redis database `1`
+- **Production**: Redis database `1` (auto-detected)
+
+**No manual configuration needed!** The code checks for Replit deployment indicators and automatically routes to the correct database.
 
 ---
 
-## Setup Instructions for Production
+## How Auto-Detection Works
 
-### Step 1: Add Environment Variable in Production
+The system checks these environment variables:
+- `REPLIT_DEPLOYMENT=1` → Production
+- `REPL_SLUG` ends with `.replit.app` → Production
+- `REPLIT_DOMAINS` contains `replit.app` → Production
 
-In your Replit production deployment settings, add this **Replit Secret**:
+If any of these are true, it uses Redis database `1`. Otherwise, it defaults to database `0`.
 
+---
+
+## Verification Steps
+
+### Development Environment
+Check your dev worker logs for:
 ```
-Name: REDIS_DB
-Value: 1
-```
-
-**How to add it:**
-1. Go to your Replit project
-2. Click on **"Secrets"** (lock icon in left sidebar)
-3. Click **"+ New Secret"**
-4. Enter:
-   - Key: `REDIS_DB`
-   - Value: `1`
-5. Save
-
-### Step 2: Deploy/Publish
-
-After adding the secret, click **Publish** to deploy with the new configuration.
-
-### Step 3: Verify Separation
-
-After deployment, check the worker logs in production. You should see:
-
-```
-Built TLS Redis connection for magnetic-ray-22268.upstash.io:6379 (DB: 1)
+Configuring Redis connection (Environment: DEVELOPMENT, TLS: True, DB: 0)
 ```
 
-And in development, you should see:
-
+### Production Environment
+After publishing, check production worker logs for:
 ```
-Built TLS Redis connection for magnetic-ray-22268.upstash.io:6379 (DB: 0)
+Configuring Redis connection (Environment: PRODUCTION, TLS: True, DB: 1)
 ```
 
 ---
