@@ -71,6 +71,10 @@ def get_redis_url():
     - Local Redis: redis://host:port
     - Redis with password: redis://default:password@host:port
     
+    Automatically detects production vs dev environment and uses separate Redis databases:
+    - Production (.replit.app): Database 1
+    - Development: Database 0
+    
     Returns:
         str: Fully qualified Redis connection URL
     """
@@ -80,9 +84,27 @@ def get_redis_url():
     redis_port = os.getenv('REDIS_PORT', DEFAULT_REDIS_PORT)
     redis_password = os.getenv('REDIS_PASSWORD', '')
     redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
-    redis_db = os.getenv('REDIS_DB', DEFAULT_REDIS_DB)  # Allow env override for prod/dev separation
     
-    logger.info(f"Configuring Redis connection (TLS: {redis_use_tls}, DB: {redis_db})")
+    # Auto-detect environment and set Redis database
+    # Check multiple environment indicators for production
+    is_production = (
+        os.getenv('REPLIT_DEPLOYMENT') == '1' or  # Replit deployment flag
+        os.getenv('REPL_SLUG', '').endswith('.replit.app') or  # Production URL pattern
+        'replit.app' in os.getenv('REPLIT_DOMAINS', '')  # Domain check
+    )
+    
+    # Use different Redis databases for prod vs dev (prevents cross-contamination)
+    if is_production:
+        redis_db = '1'  # Production uses database 1
+        env_name = 'PRODUCTION'
+    else:
+        redis_db = '0'  # Development uses database 0
+        env_name = 'DEVELOPMENT'
+    
+    # Allow manual override via environment variable
+    redis_db = os.getenv('REDIS_DB', redis_db)
+    
+    logger.info(f"Configuring Redis connection (Environment: {env_name}, TLS: {redis_use_tls}, DB: {redis_db})")
     
     # Parse if REDIS_HOST contains a full connection string
     if 'redis://' in redis_host_raw or 'rediss://' in redis_host_raw:
