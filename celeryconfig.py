@@ -195,5 +195,122 @@ celery_app.conf.update(
 logger.info("Celery app configured successfully")
 
 
+# ============================================
+# CELERY SIGNAL HANDLERS
+# ============================================
+
+from celery import signals
+
+
+@signals.task_prerun.connect
+def task_prerun_handler(sender=None, task_id=None, task=None, **kwargs):
+    """
+    Automatically update job status to 'running' when task starts execution.
+    
+    This signal fires when a task is about to run, ensuring status updates
+    even if the task fails before reaching its own status update code.
+    
+    Args:
+        sender: The task class
+        task_id: Unique task identifier
+        task: Task instance
+        **kwargs: Additional signal parameters
+    """
+    from utils.db.jobs import update_celery_job_status, get_celery_job
+    
+    try:
+        # Check if this job exists in our tracking table
+        job = get_celery_job(task_id)
+        
+        if job and job['status'] == 'pending':
+            logger.info(f"🔔 Signal: Task {task_id} starting, updating status to 'running'")
+            update_celery_job_status(
+                task_id, 
+                'running',
+                progress_message='Task execution started via signal handler'
+            )
+        elif job:
+            logger.debug(f"🔔 Signal: Task {task_id} already has status '{job['status']}'")
+        else:
+            logger.debug(f"🔔 Signal: Task {task_id} not found in celery_jobs table (may be preview mode)")
+            
+    except Exception as e:
+        # Don't fail the task just because status tracking failed
+        logger.warning(f"⚠️ Signal handler failed to update status for {task_id}: {e}")
+
+
+@signals.task_failure.connect
+def task_failure_handler(sender=None, task_id=None, exception=None, traceback=None, **kwargs):
+    """
+    Automatically update job status to 'failed' when task raises an exception.
+    
+    This signal fires when a task fails, ensuring status updates even if the
+    task's own error handling doesn't update the status.
+    
+    Args:
+        sender: The task class
+        task_id: Unique task identifier
+        exception: The exception that caused the failure
+        traceback: Exception traceback object
+        **kwargs: Additional signal parameters
+    """
+    from utils.db.jobs import update_celery_job_status, get_celery_job
+    
+    try:
+        job = get_celery_job(task_id)
+        
+        if job:
+            error_message = f"{type(exception).__name__}: {str(exception)}"
+            logger.error(f"🔔 Signal: Task {task_id} failed with error: {error_message}")
+            
+            # Only update if not already marked as failed (task may have handled it)
+            if job['status'] != 'failed':
+                update_celery_job_status(
+                    task_id,
+                    'failed',
+                    error_message=error_message[:1000]  # Truncate long errors
+                )
+        else:
+            logger.debug(f"🔔 Signal: Failed task {task_id} not found in celery_jobs table")
+            
+    except Exception as e:
+        # Don't fail the task just because status tracking failed
+        logger.warning(f"⚠️ Failure signal handler error for {task_id}: {e}")
+
+
+@signals.task_success.connect
+def task_success_handler(sender=None, task_id=None, result=None, **kwargs):
+    """
+    Log when task completes successfully (status updated by task itself).
+    
+    This is primarily for logging/monitoring. The task should handle its own
+    success status update, but this provides a fallback.
+    
+    Args:
+        sender: The task class
+        task_id: Unique task identifier  
+        result: Task return value
+        **kwargs: Additional signal parameters
+    """
+    from utils.db.jobs import get_celery_job
+    
+    try:
+        job = get_celery_job(task_id)
+        
+        if job:
+            logger.info(f"🔔 Signal: Task {task_id} completed successfully (status: {job['status']})")
+            
+            # Note: We don't forcibly update status here because the task itself
+            # should handle success status updates with detailed results
+        else:
+            logger.debug(f"🔔 Signal: Successful task {task_id} not found in celery_jobs table")
+            
+    except Exception as e:
+        logger.warning(f"⚠️ Success signal handler error for {task_id}: {e}")
+
+
+logger.info("Celery signal handlers registered successfully")
+
+
 if __name__ == '__main__':
     celery_app.start()
