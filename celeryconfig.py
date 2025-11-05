@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 # Task time limits (seconds)
-TASK_HARD_TIME_LIMIT = 3600  # 60 minutes - hard kill for hung tasks (increased for large batches)
-TASK_SOFT_TIME_LIMIT = 3300  # 55 minutes - warning before hard kill
+TASK_HARD_TIME_LIMIT = 10800  # 3 hours - hard kill for hung tasks (increased for large batches)
+TASK_SOFT_TIME_LIMIT = 10500  # 2h 55min - warning before hard kill
 
 # Worker settings
 WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after N tasks (prevents memory leaks)
