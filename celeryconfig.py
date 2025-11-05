@@ -208,8 +208,8 @@ celery_app.conf.update(
     worker_max_tasks_per_child=WORKER_MAX_TASKS_PER_CHILD,  # Restart after N tasks
     
     # Task time limits (prevents hung tasks)
-    task_time_limit=TASK_HARD_TIME_LIMIT,      # Hard kill after 30 min
-    task_soft_time_limit=TASK_SOFT_TIME_LIMIT, # Soft timeout at 25 min
+    task_time_limit=TASK_HARD_TIME_LIMIT,      # Hard kill after 3 hours
+    task_soft_time_limit=TASK_SOFT_TIME_LIMIT, # Soft timeout at 2h 55min
     
     # Retry settings
     task_default_retry_delay=TASK_DEFAULT_RETRY_DELAY,
