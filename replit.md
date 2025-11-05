@@ -53,6 +53,20 @@ The application features a modular architecture:
     - **Progress Tracking**: Live progress updates (current/total/message) stored in `celery_jobs` table
     - **Immediate Response**: All job submissions return instantly with "Job queued!" message
     - **Database Consistency**: Single `celery_jobs` table for all UI-visible job tracking
+-   **Automatic Status Tracking** (November 2025 - Signal Handlers):
+    - **Signal-Based Status Updates**: Celery signal handlers automatically track job status transitions even if task crashes before explicit status update
+    - **task_prerun Handler**: Updates status from 'pending' to 'running' when task execution starts, preventing stuck pending jobs
+    - **task_failure Handler**: Automatically marks jobs as 'failed' with error message when exceptions occur
+    - **task_success Handler**: Logs successful task completion for monitoring
+    - **Defensive Design**: All handlers use try/except to prevent status tracking failures from crashing the worker
+    - **Fixes Root Cause**: Eliminates jobs stuck in 'pending' status when tasks fail during initialization or validation
+-   **Database Maintenance** (November 2025 - Cleanup Utility):
+    - **Cleanup Script**: `utils/cleanup_orphaned_jobs.py` for identifying and removing problematic job records
+    - **Orphaned Jobs**: Detects jobs referencing deleted data sources
+    - **Stuck Jobs**: Identifies jobs in pending (>1h) or running (>2h) states
+    - **Old Jobs**: Removes completed jobs (>90 days) and failed jobs (>30 days)
+    - **Safe Operations**: Default dry-run mode shows impact before making changes, explicit --execute flag required for mutations
+    - **Production Ready**: Conservative thresholds and detailed reporting make it safe for production databases
 
 ### Configuration & Data Flow
 -   Environment variables for API keys and Google Cloud service account JSON.
