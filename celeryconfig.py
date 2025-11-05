@@ -52,6 +52,7 @@ BROKER_CONNECTION_MAX_RETRIES = 10  # Max retry attempts for broker connection
 # Default Redis settings
 DEFAULT_REDIS_HOST = 'localhost'
 DEFAULT_REDIS_PORT = '6379'
+DEFAULT_REDIS_DB = '0'  # Default to database 0 for dev
 
 # SSL parameters
 SSL_CERT_REQS = 'required'
@@ -79,8 +80,9 @@ def get_redis_url():
     redis_port = os.getenv('REDIS_PORT', DEFAULT_REDIS_PORT)
     redis_password = os.getenv('REDIS_PASSWORD', '')
     redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
+    redis_db = os.getenv('REDIS_DB', DEFAULT_REDIS_DB)  # Allow env override for prod/dev separation
     
-    logger.info(f"Configuring Redis connection (TLS: {redis_use_tls})")
+    logger.info(f"Configuring Redis connection (TLS: {redis_use_tls}, DB: {redis_db})")
     
     # Parse if REDIS_HOST contains a full connection string
     if 'redis://' in redis_host_raw or 'rediss://' in redis_host_raw:
@@ -108,19 +110,19 @@ def get_redis_url():
         redis_host = redis_host_raw
         logger.info(f"Using Redis host: {redis_host}:{redis_port}")
     
-    # Build connection URL
+    # Build connection URL with database number for environment separation
     if redis_use_tls and redis_password:
         connection_url = (
-            f"rediss://default:{redis_password}@{redis_host}:{redis_port}"
+            f"rediss://default:{redis_password}@{redis_host}:{redis_port}/{redis_db}"
             f"?ssl_cert_reqs={SSL_CERT_REQS}"
         )
-        logger.info(f"Built TLS Redis connection for {redis_host}:{redis_port}")
+        logger.info(f"Built TLS Redis connection for {redis_host}:{redis_port} (DB: {redis_db})")
     elif redis_password:
-        connection_url = f"redis://default:{redis_password}@{redis_host}:{redis_port}/0"
-        logger.info(f"Built authenticated Redis connection for {redis_host}:{redis_port}")
+        connection_url = f"redis://default:{redis_password}@{redis_host}:{redis_port}/{redis_db}"
+        logger.info(f"Built authenticated Redis connection for {redis_host}:{redis_port} (DB: {redis_db})")
     else:
-        connection_url = f"redis://{redis_host}:{redis_port}/0"
-        logger.info(f"Built Redis connection for {redis_host}:{redis_port}")
+        connection_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+        logger.info(f"Built Redis connection for {redis_host}:{redis_port} (DB: {redis_db})")
     
     return connection_url
 
