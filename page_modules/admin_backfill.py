@@ -157,25 +157,39 @@ def run_backfill(dry_run=True, progress_container=None):
                     })
                     continue
                 
-                # Extract metadata
+                # Extract metadata - try multiple possible field names
                 file_metadata = parsed_row['file_metadata'] or {}
                 chunk_metadata = chunk_row['metadata'] or {}
                 
+                # Try multiple possible keys for paper title
                 paper_title = (
                     file_metadata.get('paper_title') or 
+                    file_metadata.get('title') or
                     chunk_metadata.get('paper_title') or 
+                    chunk_metadata.get('title') or
                     parsed_row['filename'] or
-                    'Unknown'
+                    f"PDF {file_id[:8]}..."
                 )
                 
+                # Try multiple possible keys for authors
                 authors = (
                     file_metadata.get('authors') or 
                     chunk_metadata.get('authors') or 
+                    chunk_metadata.get('author') or
                     ''
                 )
                 
-                source_id = chunk_metadata.get('source_id')
-                source_name = chunk_metadata.get('source', 'Unknown')
+                # Try multiple possible keys for source
+                source_id = (
+                    chunk_metadata.get('source_id') or
+                    file_metadata.get('source_id')
+                )
+                source_name = (
+                    chunk_metadata.get('source') or 
+                    file_metadata.get('source') or
+                    chunk_metadata.get('source_name') or
+                    f"Source {source_id}" if source_id else "Unknown"
+                )
                 
                 # Generate content hash
                 content_hash = generate_content_hash(paper_title, authors)
@@ -204,9 +218,10 @@ def run_backfill(dry_run=True, progress_container=None):
                     results['details'].append({
                         'file_id': file_id,
                         'status': 'would_create',
-                        'title': paper_title[:60],
-                        'authors': authors[:60],
-                        'source': source_name
+                        'title': paper_title[:80] if paper_title else f"File {file_id[:12]}...",
+                        'authors': authors[:60] if authors else '',
+                        'source': source_name,
+                        'file_id_short': file_id[:12]
                     })
                 else:
                     # Actually create the record
@@ -363,7 +378,10 @@ def render():
         with st.expander(f"📋 View {len(results['details'])} Preview Details"):
             for detail in results['details'][:20]:  # Show first 20
                 if detail['status'] == 'would_create':
-                    st.success(f"✅ Would create: {detail['title']} (Source: {detail['source']})")
+                    title_text = detail.get('title', 'Unknown')
+                    source_text = detail.get('source', 'Unknown')
+                    file_id_text = detail.get('file_id_short', detail.get('file_id', '')[:12])
+                    st.success(f"✅ {title_text}\n   📂 File ID: `{file_id_text}...` | Source: {source_text}")
                 elif detail['status'] == 'skipped':
                     st.warning(f"⚠️ Would skip: {detail['file_id'][:20]}... - {detail['reason']}")
         
@@ -409,7 +427,8 @@ def render():
             with st.expander(f"📋 View {len(results['details'])} Details"):
                 for detail in results['details']:
                     if detail['status'] == 'created':
-                        st.success(f"✅ Created ID {detail['paper_id']}: {detail['title']}")
+                        title_text = detail.get('title', 'Unknown')
+                        st.success(f"✅ Created paper ID {detail['paper_id']}: {title_text}")
                     elif detail['status'] == 'error':
                         st.error(f"❌ Error: {detail['file_id'][:20]}... - {detail['error']}")
         
