@@ -153,18 +153,17 @@ def call_with_retry(
 # TASKS
 # ============================================
 
-@celery_app.task(bind=True, base=CallbackTask, name='tasks.process_pdf_task')
-def process_pdf_task(
-    self,
+def _process_single_pdf_logic(
     file_id: str,
     filename: str,
     row_metadata: Dict[str, Any],
     config: Dict[str, Any],
     job_id: str,
-    namespace: str = 'default'
+    namespace: str = 'default',
+    progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> Dict[str, Any]:
     """
-    Process a single PDF: download, parse, chunk, embed, and upload to Pinecone.
+    Core PDF processing logic (extracted for reuse).
     
     Args:
         file_id: Google Drive file ID
@@ -173,6 +172,7 @@ def process_pdf_task(
         config: Processing configuration
         job_id: Parent processing job ID
         namespace: Pinecone namespace
+        progress_callback: Optional callback for progress updates
         
     Returns:
         Dictionary with processing results
