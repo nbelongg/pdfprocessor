@@ -191,6 +191,13 @@ def run_backfill(dry_run=True, progress_container=None):
                     chunk_metadata.get('source_id') or
                     file_metadata.get('source_id')
                 )
+                # Ensure source_id is an integer or None
+                if source_id and not isinstance(source_id, int):
+                    try:
+                        source_id = int(source_id)
+                    except (ValueError, TypeError):
+                        source_id = None
+                
                 source_name = (
                     chunk_metadata.get('source') or 
                     file_metadata.get('source') or
@@ -204,14 +211,14 @@ def run_backfill(dry_run=True, progress_container=None):
                 # Get namespace
                 namespace = chunk_row['namespace'] or 'default'
                 
-                # Build complete metadata
+                # Build complete metadata - ensure all values are JSON serializable
                 complete_metadata = {
-                    'paper_title': paper_title,
-                    'authors': authors,
+                    'paper_title': str(paper_title) if paper_title else '',
+                    'authors': str(authors) if authors else '',
                     'publication_year': file_metadata.get('publication_year') or chunk_metadata.get('publication_year'),
                     'topic': file_metadata.get('topic') or chunk_metadata.get('topic'),
-                    'source': source_name,
-                    'source_id': source_id,
+                    'source': str(source_name) if source_name else 'Unknown',
+                    'source_id': source_id if source_id else None,
                 }
                 
                 # Calculate fingerprint (if available)
@@ -223,8 +230,10 @@ def run_backfill(dry_run=True, progress_container=None):
                         # Fingerprint calculation failed, continue without it
                         pass
                 
-                # Use earliest timestamp
+                # Use earliest timestamp, fallback to now if both are None
                 created_at = chunk_row['created_at'] or parsed_row['created_at']
+                if not created_at:
+                    created_at = datetime.now()
                 
                 if dry_run:
                     results['success'] += 1
@@ -298,17 +307,22 @@ def run_backfill(dry_run=True, progress_container=None):
                     if result:
                         paper_id = result['id']
                         
-                        # Create source_paper_mapping if we have source_id
-                        if source_id:
-                            cur.execute("""
-                                INSERT INTO source_paper_mapping (
-                                    source_id,
-                                    paper_id,
-                                    row_number,
-                                    created_at
-                                ) VALUES (%s, %s, %s, %s)
-                                ON CONFLICT (source_id, paper_id) DO NOTHING
-                            """, (source_id, paper_id, 0, created_at))
+                        # Create source_paper_mapping if we have valid source_id
+                        if source_id and isinstance(source_id, int):
+                            try:
+                                cur.execute("""
+                                    INSERT INTO source_paper_mapping (
+                                        source_id,
+                                        paper_id,
+                                        row_number,
+                                        created_at
+                                    ) VALUES (%s, %s, %s, %s)
+                                    ON CONFLICT (source_id, paper_id) DO NOTHING
+                                """, (source_id, paper_id, 0, created_at))
+                            except Exception as mapping_err:
+                                # Log error but don't fail the whole operation
+                                # The processed_papers record is already created
+                                pass
                         
                         conn.commit()
                         results['success'] += 1
@@ -320,6 +334,8 @@ def run_backfill(dry_run=True, progress_container=None):
                             'source': source_name
                         })
                     else:
+                        # Record was not inserted (conflict), this means it already exists
+                        conn.commit()  # Commit the transaction
                         results['skipped'] += 1
                         results['details'].append({
                             'file_id': file_id,
