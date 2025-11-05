@@ -36,12 +36,13 @@ PAGES = {
     "history": Page("📜", "History", "history"),
     "search": Page("🔍", "Search Test", "search"),
     "diagnostics": Page("🔬", "Diagnostics", "diagnostics"),
-    "admin_backfill": Page("🔧", "Admin: Backfill", "admin_backfill"),
+    "admin_backfill": Page("🔧", "Admin: Backfill Papers", "admin_backfill"),
+    "admin_metadata_enrichment": Page("🔧", "Admin: Enrich Metadata", "admin_metadata_enrichment"),
 }
 
 # Page order for navigation
 PAGE_ORDER = [
-    "home", "products", "data_sources", "job_queue", "monitoring", "metadata_management", "status", "history", "search", "diagnostics", "admin_backfill"
+    "home", "products", "data_sources", "job_queue", "monitoring", "metadata_management", "status", "history", "search", "diagnostics", "admin_backfill", "admin_metadata_enrichment"
 ]
 
 # ============================================
