@@ -134,6 +134,8 @@ def create_product(
     **kwargs
 ) -> int:
     """Create a new product with processing settings."""
+    from psycopg2.extras import Json
+    
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             # Build column list and values dynamically
@@ -151,7 +153,11 @@ def create_product(
             # Add any additional kwargs
             for key, value in kwargs.items():
                 columns.append(key)
-                values.append(value)
+                # Wrap JSON fields with Json() adapter
+                if key in ['tagging_config', 'tag_mappings'] and value is not None:
+                    values.append(Json(value))
+                else:
+                    values.append(value)
             
             placeholders = ', '.join(['%s'] * len(values))
             columns_str = ', '.join(columns)
