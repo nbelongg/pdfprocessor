@@ -420,16 +420,25 @@ def process_batch_task(
     job_id = self.request.id
     
     try:
-        # Update status to 'running' in celery_jobs table
-        if not preview_mode:
-            update_celery_job_status(
-                job_id,
-                'running',
-                progress_current=0,
-                progress_total=len(selected_indices),
-                progress_message='Starting batch processing...'
-            )
+        logger.info(f"Starting batch task: job_id={job_id}, source_id={source_id}, papers={len(selected_indices)}")
         
+        # CRITICAL: Update status to 'running' FIRST (before any failures can occur)
+        if not preview_mode:
+            try:
+                update_celery_job_status(
+                    job_id,
+                    'running',
+                    progress_current=0,
+                    progress_total=len(selected_indices),
+                    progress_message='Starting batch processing...'
+                )
+                logger.info(f"✅ Status updated to 'running' for job {job_id}")
+            except Exception as status_error:
+                logger.error(f"❌ Failed to update status to running: {status_error}")
+                # Continue anyway - don't fail the whole job just because status update failed
+        
+        # Now check if source exists
+        logger.info(f"Fetching data source {source_id}...")
         source_info = get_data_source(source_id)
         
         if not source_info:
@@ -442,6 +451,8 @@ def process_batch_task(
                 'job_id': job_id,
                 'error': error_msg
             }
+        
+        logger.info(f"✅ Data source found: {source_info.get('name', 'Unknown')}")
         
         # Apply product-specific configuration using centralized builder
         if source_info.get('product_id'):
