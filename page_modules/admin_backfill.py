@@ -7,11 +7,17 @@ import streamlit as st
 import sys
 from io import StringIO
 from datetime import datetime
+import psycopg2
 import psycopg2.extras
 from utils.db.connection import get_db_connection
 from utils.deduplication import generate_content_hash
-from utils.metadata_fingerprint import calculate_metadata_fingerprint
 from typing import Dict, Set
+
+# Try to import metadata_fingerprint, fallback to None if not available
+try:
+    from utils.metadata_fingerprint import calculate_metadata_fingerprint
+except ImportError:
+    calculate_metadata_fingerprint = None
 
 
 def get_database_stats():
@@ -207,8 +213,14 @@ def run_backfill(dry_run=True, progress_container=None):
                     'source_id': source_id,
                 }
                 
-                # Calculate fingerprint
-                metadata_fingerprint = calculate_metadata_fingerprint(complete_metadata)
+                # Calculate fingerprint (if available)
+                metadata_fingerprint = None
+                if calculate_metadata_fingerprint:
+                    try:
+                        metadata_fingerprint = calculate_metadata_fingerprint(complete_metadata)
+                    except Exception as e:
+                        # Fingerprint calculation failed, continue without it
+                        pass
                 
                 # Use earliest timestamp
                 created_at = chunk_row['created_at'] or parsed_row['created_at']
@@ -225,29 +237,58 @@ def run_backfill(dry_run=True, progress_container=None):
                     })
                 else:
                     # Actually create the record
-                    cur.execute("""
-                        INSERT INTO processed_papers (
-                            drive_file_id,
+                    # Try with metadata_fingerprint first, fall back without it if column doesn't exist
+                    try:
+                        cur.execute("""
+                            INSERT INTO processed_papers (
+                                drive_file_id,
+                                content_hash,
+                                paper_title,
+                                authors,
+                                metadata,
+                                pinecone_namespace,
+                                processed_at,
+                                metadata_fingerprint
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (drive_file_id) DO NOTHING
+                            RETURNING id
+                        """, (
+                            file_id,
                             content_hash,
                             paper_title,
                             authors,
-                            metadata,
-                            pinecone_namespace,
-                            processed_at,
+                            complete_metadata,
+                            namespace,
+                            created_at,
                             metadata_fingerprint
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (drive_file_id) DO NOTHING
-                        RETURNING id
-                    """, (
-                        file_id,
-                        content_hash,
-                        paper_title,
-                        authors,
-                        complete_metadata,
-                        namespace,
-                        created_at,
-                        metadata_fingerprint
-                    ))
+                        ))
+                    except psycopg2.Error as fingerprint_err:
+                        # If metadata_fingerprint column doesn't exist, retry without it
+                        if 'metadata_fingerprint' in str(fingerprint_err).lower():
+                            conn.rollback()
+                            cur.execute("""
+                                INSERT INTO processed_papers (
+                                    drive_file_id,
+                                    content_hash,
+                                    paper_title,
+                                    authors,
+                                    metadata,
+                                    pinecone_namespace,
+                                    processed_at
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (drive_file_id) DO NOTHING
+                                RETURNING id
+                            """, (
+                                file_id,
+                                content_hash,
+                                paper_title,
+                                authors,
+                                complete_metadata,
+                                namespace,
+                                created_at
+                            ))
+                        else:
+                            raise
                     
                     result = cur.fetchone()
                     if result:
@@ -431,6 +472,20 @@ def render():
                         st.success(f"✅ Created paper ID {detail['paper_id']}: {title_text}")
                     elif detail['status'] == 'error':
                         st.error(f"❌ Error: {detail['file_id'][:20]}... - {detail['error']}")
+        
+        # Show error details prominently
+        if results['errors'] > 0:
+            st.error(f"❌ {results['errors']} records failed to create!")
+            
+            with st.expander(f"⚠️ View {results['errors']} Error Details", expanded=True):
+                error_count = 0
+                for detail in results['details']:
+                    if detail['status'] == 'error':
+                        error_count += 1
+                        st.error(f"**Error #{error_count}:** File ID: `{detail.get('file_id', 'unknown')[:20]}...`")
+                        st.code(detail.get('error', 'Unknown error'), language=None)
+                        if error_count >= 10:
+                            st.warning(f"... and {results['errors'] - 10} more errors (showing first 10)")
         
         # Refresh stats
         st.markdown("---")
