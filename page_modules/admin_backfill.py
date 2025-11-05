@@ -77,6 +77,17 @@ def get_missing_count():
         conn.close()
 
 
+def get_table_columns(cur, table_name):
+    """Get list of columns for a table."""
+    cur.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = %s
+        ORDER BY ordinal_position
+    """, (table_name,))
+    return [row['column_name'] for row in cur.fetchall()]
+
+
 def run_backfill(dry_run=True, progress_container=None):
     """
     Run the backfill operation.
@@ -96,6 +107,11 @@ def run_backfill(dry_run=True, progress_container=None):
     # Get missing file_ids
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    # Detect which columns exist in processed_papers table
+    available_columns = get_table_columns(cur, 'processed_papers')
+    has_metadata_fingerprint = 'metadata_fingerprint' in available_columns
+    has_processed_at = 'processed_at' in available_columns
     
     try:
         # Get file_ids with chunks
@@ -250,8 +266,9 @@ def run_backfill(dry_run=True, progress_container=None):
                     # Convert metadata dict to JSON string for PostgreSQL JSONB
                     metadata_json = json.dumps(complete_metadata)
                     
-                    # Try with metadata_fingerprint first, fall back without it if column doesn't exist
-                    try:
+                    # Build INSERT query based on available columns
+                    if has_metadata_fingerprint and has_processed_at:
+                        # Full schema with both columns
                         cur.execute("""
                             INSERT INTO processed_papers (
                                 drive_file_id,
@@ -275,33 +292,73 @@ def run_backfill(dry_run=True, progress_container=None):
                             created_at,
                             metadata_fingerprint
                         ))
-                    except psycopg2.Error as fingerprint_err:
-                        # If metadata_fingerprint column doesn't exist, retry without it
-                        if 'metadata_fingerprint' in str(fingerprint_err).lower():
-                            conn.rollback()
-                            cur.execute("""
-                                INSERT INTO processed_papers (
-                                    drive_file_id,
-                                    content_hash,
-                                    paper_title,
-                                    authors,
-                                    metadata,
-                                    pinecone_namespace,
-                                    processed_at
-                                ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
-                                ON CONFLICT (drive_file_id) DO NOTHING
-                                RETURNING id
-                            """, (
-                                file_id,
+                    elif has_processed_at:
+                        # Has processed_at but not metadata_fingerprint
+                        cur.execute("""
+                            INSERT INTO processed_papers (
+                                drive_file_id,
                                 content_hash,
                                 paper_title,
                                 authors,
-                                metadata_json,
-                                namespace,
-                                created_at
-                            ))
-                        else:
-                            raise
+                                metadata,
+                                pinecone_namespace,
+                                processed_at
+                            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
+                            ON CONFLICT (drive_file_id) DO NOTHING
+                            RETURNING id
+                        """, (
+                            file_id,
+                            content_hash,
+                            paper_title,
+                            authors,
+                            metadata_json,
+                            namespace,
+                            created_at
+                        ))
+                    elif has_metadata_fingerprint:
+                        # Has metadata_fingerprint but not processed_at
+                        cur.execute("""
+                            INSERT INTO processed_papers (
+                                drive_file_id,
+                                content_hash,
+                                paper_title,
+                                authors,
+                                metadata,
+                                pinecone_namespace,
+                                metadata_fingerprint
+                            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
+                            ON CONFLICT (drive_file_id) DO NOTHING
+                            RETURNING id
+                        """, (
+                            file_id,
+                            content_hash,
+                            paper_title,
+                            authors,
+                            metadata_json,
+                            namespace,
+                            metadata_fingerprint
+                        ))
+                    else:
+                        # Minimal schema - neither column
+                        cur.execute("""
+                            INSERT INTO processed_papers (
+                                drive_file_id,
+                                content_hash,
+                                paper_title,
+                                authors,
+                                metadata,
+                                pinecone_namespace
+                            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+                            ON CONFLICT (drive_file_id) DO NOTHING
+                            RETURNING id
+                        """, (
+                            file_id,
+                            content_hash,
+                            paper_title,
+                            authors,
+                            metadata_json,
+                            namespace
+                        ))
                     
                     result = cur.fetchone()
                     if result:
