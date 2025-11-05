@@ -16,7 +16,7 @@ from config.constants import (
 
 # Import page modules
 from page_modules import home, products, data_sources, select_files, preview
-from page_modules import process, job_queue, monitoring, status, history, search, metadata_management
+from page_modules import process, job_queue, monitoring, status, history, search, metadata_management, diagnostics
 
 # Import database utilities for sidebar stats and initialization
 from utils.database import get_products, get_data_sources
