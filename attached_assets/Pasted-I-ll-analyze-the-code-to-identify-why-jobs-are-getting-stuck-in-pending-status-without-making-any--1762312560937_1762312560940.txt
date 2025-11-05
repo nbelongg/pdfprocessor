@@ -1,0 +1,270 @@
+I'll analyze the code to identify why jobs are getting stuck in `pending` status without making any changes.
+
+[3 tools called]
+
+Now checking if workers are actually running and picking up tasks:
+
+[4 tools called]
+
+Now let me check the worker command more closely:
+
+[2 tools called]
+
+# Detailed Analysis: Jobs Stuck in Pending Status
+
+After analyzing your codebase, I've identified **several critical issues** that can cause jobs to get stuck in `pending` status. Here's a comprehensive breakdown:
+
+---
+
+## 🔴 Critical Issue #1: Missing Queue Specification in Worker Command
+
+**Location:** `.replit` line 45
+
+```python
+args = "celery -A celeryconfig worker --loglevel=info --concurrency=3"
+```
+
+**Problem:** The worker is **NOT listening to any specific queues**. By default, Celery workers only listen to the `celery` queue (the default queue), but your tasks are being routed to specific queues:
+
+- `process_batch_task` → `batch_processing` queue (line 632 of `page_modules/job_queue.py`)
+- `process_pdf_task` → `pdf_processing` queue
+
+**Result:** Tasks are sent to `batch_processing` queue, but worker is listening to `celery` queue. **Tasks never get picked up.**
+
+**Fix Required:**
+```bash
+celery -A celeryconfig worker --loglevel=info --concurrency=3 -Q batch_processing,pdf_processing,metadata_updates
+```
+
+---
+
+## 🟡 Issue #2: No Automatic Status Update When Task Starts
+
+**Location:** `tasks.py` lines 425-438
+
+```python
+try:
+    logger.info(f"Starting batch task...")
+    
+    # Status update to 'running' happens HERE
+    if not preview_mode:
+        try:
+            update_celery_job_status(job_id, 'running', ...)
+```
+
+**Problems:**
+
+1. **Status update happens INSIDE the task function** - If the task fails before reaching line 428 (e.g., during deserialization, imports, or parameter validation), the status never updates from `pending`.
+
+2. **Import happens inside function** (line 419) - If there's an import error, the status update function is never even imported.
+
+3. **No Celery signal handlers** - Celery has built-in signals (`task_prerun`, `task_failure`) that fire when tasks start/fail, but your code doesn't use them.
+
+**Scenarios where status stays `pending`:**
+- Task deserialization fails (bad JSON, incompatible types)
+- Import error in `tasks.py`
+- Exception raised before line 428
+- Worker crashes before task starts
+- Database connection fails during status update (line 428)
+
+---
+
+## 🟡 Issue #3: No Fallback Status Tracking
+
+**Location:** `celeryconfig.py` - Missing signal handlers
+
+Your code maintains a custom `celery_jobs` table, but it has **no automatic synchronization** with Celery's built-in task states. Celery tracks task states (`PENDING`, `STARTED`, `RETRY`, `FAILURE`, `SUCCESS`) in Redis, but your database table is only updated manually.
+
+**Problems:**
+- If status update fails (line 428-438), there's no fallback
+- No visibility into why a task is stuck
+- Can't distinguish between "worker hasn't picked up task" vs "task started but status update failed"
+
+---
+
+## 🟢 Issue #4: Worker Configuration Mismatch
+
+**Location:** `celeryconfig.py` lines 162, 165
+
+```python
+task_acks_late=True,  # Line 162
+worker_prefetch_multiplier=1,  # Line 165
+```
+
+**Analysis:** These settings are actually GOOD for your use case:
+- `task_acks_late=True` - Worker only acknowledges task AFTER completion (prevents message loss)
+- `worker_prefetch_multiplier=1` - Worker only fetches 1 task at a time (good for long-running tasks)
+
+However, combined with Issue #1 (wrong queue), these settings mean:
+- Worker prefetches 1 task from `celery` queue
+- Your tasks go to `batch_processing` queue
+- Worker never sees them, **permanently stuck**
+
+---
+
+## 🔴 Issue #5: Race Condition in Job Creation
+
+**Location:** `page_modules/job_queue.py` lines 608-633
+
+```python
+# Create Celery job record with pending status (line 611)
+db_job_id = create_celery_job(
+    task_id=job_id,
+    task_name=f"On-Demand: {source['name']}",
+    source_id=source['id'],
+    submitted_by='manual'
+)
+
+# Submit async task to Celery (line 624)
+process_batch_task.apply_async(
+    args=[...],
+    task_id=job_id,
+    queue='batch_processing'
+)
+```
+
+**Timeline:**
+1. `create_celery_job()` - Status = `pending` ✅
+2. `apply_async()` - Task sent to queue ✅
+3. **[GAP: If worker picks up task IMMEDIATELY]**
+4. Task tries to update status to `running` (line 428 in `tasks.py`)
+5. If step 3-4 happen before step 2 returns, status might not update
+
+**Low probability**, but can happen under high concurrency.
+
+---
+
+## 🟡 Issue #6: Database Status Update Can Fail Silently
+
+**Location:** `tasks.py` lines 436-438
+
+```python
+except Exception as status_error:
+    logger.error(f"❌ Failed to update status to running: {status_error}")
+    # Continue anyway - don't fail the whole job just because status update failed
+```
+
+**Problem:** If the status update fails (database connection issue, constraint violation, etc.), the job continues but status stays `pending`. The error is logged, but the job appears stuck in the UI.
+
+**Why it fails:**
+- Database connection pool exhausted
+- Network timeout to database
+- Transaction deadlock
+- Database credential issues
+
+---
+
+## 📊 Root Cause Summary
+
+| Issue | Severity | Likelihood | Impact |
+|-------|----------|-----------|--------|
+| #1: Worker not listening to correct queue | 🔴 CRITICAL | **Very High** | All tasks stuck forever |
+| #2: Status update happens too late | 🟡 HIGH | Medium | Tasks stuck if they fail early |
+| #3: No signal handlers | 🟡 HIGH | Medium | No fallback tracking |
+| #4: Worker config (with Issue #1) | 🟢 LOW | Low | Amplifies Issue #1 |
+| #5: Race condition | 🟢 LOW | Very Low | Rare edge case |
+| #6: Silent status update failure | 🟡 MEDIUM | Medium | Tasks run but appear stuck |
+
+---
+
+## 🔍 How to Diagnose Your Specific Issue
+
+### Step 1: Check if worker is listening to the right queues
+```bash
+# Look at your worker logs - you should see:
+[2025-11-05 16:00:00,000: INFO/MainProcess] Connected to redis://...
+[tasks]
+  . tasks.process_batch_task
+  . tasks.process_pdf_task
+
+# Check what queues the worker is consuming:
+# You should see: batch_processing, pdf_processing, metadata_updates
+# If you only see "celery" - THIS IS YOUR PROBLEM (#1)
+```
+
+### Step 2: Check Redis to see if tasks are queued
+```bash
+# Connect to Redis and check:
+redis-cli
+> LLEN batch_processing
+# If > 0, tasks are queued but not being consumed (Issue #1)
+```
+
+### Step 3: Check if tasks are being routed correctly
+```python
+# Add logging in page_modules/job_queue.py after line 633:
+logger.info(f"Task routing: queue='batch_processing', task_id={job_id}")
+```
+
+### Step 4: Check database status update logs
+```bash
+# Look for these log messages in worker logs:
+# ✅ "Status updated to 'running' for job X"
+# ❌ "Failed to update status to running: ..."
+
+# If you see ❌, the status update is failing (Issue #6)
+```
+
+---
+
+## ✅ Recommended Fixes (Priority Order)
+
+### 1. **IMMEDIATE FIX: Update Worker Queue** (Issue #1)
+Change `.replit` line 45:
+```bash
+args = "celery -A celeryconfig worker --loglevel=info --concurrency=3 -Q batch_processing,pdf_processing,metadata_updates"
+```
+**Impact:** This alone will likely fix 80%+ of your stuck jobs.
+
+---
+
+### 2. **Add Celery Signal Handlers** (Issues #2, #3)
+Add to `celeryconfig.py`:
+```python
+from celery import signals
+
+@signals.task_prerun.connect
+def task_prerun_handler(sender=None, task_id=None, **kwargs):
+    """Update status to 'running' when task starts."""
+    from utils.db.jobs import update_celery_job_status, get_celery_job
+    job = get_celery_job(task_id)
+    if job and job['status'] == 'pending':
+        update_celery_job_status(task_id, 'running', progress_message='Task started')
+
+@signals.task_failure.connect  
+def task_failure_handler(sender=None, task_id=None, exception=None, **kwargs):
+    """Update status to 'failed' when task fails."""
+    from utils.db.jobs import update_celery_job_status
+    update_celery_job_status(task_id, 'failed', error_message=str(exception))
+```
+**Impact:** Ensures status updates even if task fails before executing its first line.
+
+---
+
+### 3. **Move Status Update Import to Top** (Issue #2)
+In `tasks.py`, move line 419 to the top of the file with other imports:
+```python
+from utils.db.jobs import update_celery_job_status
+```
+**Impact:** Prevents import failures from blocking status updates.
+
+---
+
+### 4. **Add Health Check Endpoint** (Monitoring)
+Create a monitoring endpoint to check:
+- Are workers connected?
+- How many tasks in each queue?
+- How many jobs stuck in `pending` > 5 minutes?
+
+---
+
+## 🎯 Most Likely Culprit
+
+Based on the code analysis, **Issue #1 (worker not listening to correct queue)** is by far the most likely cause of your jobs being stuck in `pending`. The worker command in `.replit` doesn't specify any queues, so it defaults to listening only to the `celery` queue, while your tasks are being routed to `batch_processing`.
+
+**Quick Test:**
+1. Restart your worker with: `celery -A celeryconfig worker --loglevel=info --concurrency=3 -Q batch_processing,pdf_processing,metadata_updates`
+2. Submit a new job
+3. Check if it transitions to `running`
+
+If this fixes it, you've confirmed Issue #1 is the root cause.
