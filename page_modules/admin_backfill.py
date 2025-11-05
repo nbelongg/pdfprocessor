@@ -5,6 +5,7 @@ This page allows running the processed_papers backfill script from the UI.
 
 import streamlit as st
 import sys
+import json
 from io import StringIO
 from datetime import datetime
 import psycopg2
@@ -237,6 +238,9 @@ def run_backfill(dry_run=True, progress_container=None):
                     })
                 else:
                     # Actually create the record
+                    # Convert metadata dict to JSON string for PostgreSQL JSONB
+                    metadata_json = json.dumps(complete_metadata)
+                    
                     # Try with metadata_fingerprint first, fall back without it if column doesn't exist
                     try:
                         cur.execute("""
@@ -249,7 +253,7 @@ def run_backfill(dry_run=True, progress_container=None):
                                 pinecone_namespace,
                                 processed_at,
                                 metadata_fingerprint
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s)
                             ON CONFLICT (drive_file_id) DO NOTHING
                             RETURNING id
                         """, (
@@ -257,7 +261,7 @@ def run_backfill(dry_run=True, progress_container=None):
                             content_hash,
                             paper_title,
                             authors,
-                            complete_metadata,
+                            metadata_json,
                             namespace,
                             created_at,
                             metadata_fingerprint
@@ -275,7 +279,7 @@ def run_backfill(dry_run=True, progress_container=None):
                                     metadata,
                                     pinecone_namespace,
                                     processed_at
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
                                 ON CONFLICT (drive_file_id) DO NOTHING
                                 RETURNING id
                             """, (
@@ -283,7 +287,7 @@ def run_backfill(dry_run=True, progress_container=None):
                                 content_hash,
                                 paper_title,
                                 authors,
-                                complete_metadata,
+                                metadata_json,
                                 namespace,
                                 created_at
                             ))
