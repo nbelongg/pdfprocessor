@@ -185,7 +185,8 @@ def _process_single_pdf_logic(
         # Update job start time
         update_job_runtime(job_id, started_at=started_at)
         
-        self.update_progress(PROGRESS_DOWNLOAD, 100, f"Downloading {filename}...")
+        if progress_callback:
+            progress_callback(PROGRESS_DOWNLOAD, 100, f"Downloading {filename}...")
         
         pdf_content = call_with_retry(
             lambda: download_pdf_from_drive(file_id, config['google_credentials'])
@@ -195,7 +196,8 @@ def _process_single_pdf_logic(
             lambda: get_file_metadata(file_id, config['google_credentials'])
         )
         
-        self.update_progress(PROGRESS_PARSE, 100, f"Parsing {filename} with LlamaParse...")
+        if progress_callback:
+            progress_callback(PROGRESS_PARSE, 100, f"Parsing {filename} with LlamaParse...")
         
         parsed_text = call_with_retry(
             lambda: parse_pdf_with_llamaparse(pdf_content, filename, config)
@@ -230,7 +232,8 @@ def _process_single_pdf_logic(
         # Generate AI tags if enabled in product configuration
         tagging_enabled = config.get('tagging_enabled', False)
         if tagging_enabled:
-            self.update_progress(PROGRESS_TAG, 100, f"Generating AI tags for {filename}...")
+            if progress_callback:
+                progress_callback(PROGRESS_TAG, 100, f"Generating AI tags for {filename}...")
             
             try:
                 # Check if already tagged
@@ -276,15 +279,17 @@ def _process_single_pdf_logic(
                 )
                 row_metadata['tags'] = []
         
-        self.update_progress(PROGRESS_CHUNK, 100, f"Chunking {filename}...")
+        if progress_callback:
+            progress_callback(PROGRESS_CHUNK, 100, f"Chunking {filename}...")
         
         nodes = chunk_text(parsed_text, config, row_metadata)
         
-        self.update_progress(
-            PROGRESS_EMBED,
-            100,
-            f"Creating embeddings for {filename} ({len(nodes)} chunks)..."
-        )
+        if progress_callback:
+            progress_callback(
+                PROGRESS_EMBED,
+                100,
+                f"Creating embeddings for {filename} ({len(nodes)} chunks)..."
+            )
         
         embeddings = call_with_retry(
             lambda: create_embeddings(nodes, config)
@@ -307,7 +312,8 @@ def _process_single_pdf_logic(
             }
         )
         
-        self.update_progress(PROGRESS_UPLOAD, 100, f"Uploading {filename} to Pinecone...")
+        if progress_callback:
+            progress_callback(PROGRESS_UPLOAD, 100, f"Uploading {filename} to Pinecone...")
         
         pinecone_index = initialize_pinecone(config)
         
@@ -335,7 +341,8 @@ def _process_single_pdf_logic(
         save_chunks(job_id, file_id, filename, chunks_data)
         mark_chunks_uploaded(job_id, file_id)
         
-        self.update_progress(PROGRESS_COMPLETE, 100, f"Completed {filename}")
+        if progress_callback:
+            progress_callback(PROGRESS_COMPLETE, 100, f"Completed {filename}")
         
         # Track runtime
         processing_time = int(time.time() - start_time)
@@ -367,32 +374,43 @@ def _process_single_pdf_logic(
             processing_time_seconds=processing_time
         )
         
-        try:
-            raise self.retry(exc=e, countdown=CELERY_RETRY_COUNTDOWN, max_retries=CELERY_MAX_RETRIES)
-        except self.MaxRetriesExceededError:
-            # Save to dead letter queue after max retries
-            save_to_failed_queue(
-                task_id=self.request.id,
-                job_id=job_id,
-                task_name='process_pdf_task',
-                error_message=traceback.format_exc(),
-                error_type=type(e).__name__,
-                task_args={
-                    'file_id': file_id,
-                    'filename': filename,
-                    'job_id': job_id,
-                    'namespace': namespace
-                },
-                retry_count=CELERY_MAX_RETRIES
-            )
-            
-            return {
-                'status': 'error',
-                'file_id': file_id,
-                'filename': filename,
-                'error': f"Max retries exceeded: {str(e)}",
-                'processing_time_seconds': processing_time
-            }
+        return {
+            'status': 'error',
+            'file_id': file_id,
+            'filename': filename,
+            'error': str(e),
+            'processing_time_seconds': processing_time
+        }
+
+
+@celery_app.task(bind=True, base=CallbackTask, name='tasks.process_pdf_task')
+def process_pdf_task(
+    self,
+    file_id: str,
+    filename: str,
+    row_metadata: Dict[str, Any],
+    config: Dict[str, Any],
+    job_id: str,
+    namespace: str = 'default'
+) -> Dict[str, Any]:
+    """
+    Celery task wrapper for PDF processing (for standalone task execution).
+    
+    Args:
+        file_id: Google Drive file ID
+        filename: PDF filename
+        row_metadata: Metadata from Google Sheets row
+        config: Processing configuration
+        job_id: Parent processing job ID
+        namespace: Pinecone namespace
+        
+    Returns:
+        Dictionary with processing results
+    """
+    return _process_single_pdf_logic(
+        file_id, filename, row_metadata, config, job_id, namespace,
+        progress_callback=self.update_progress
+    )
 
 
 @celery_app.task(bind=True, base=CallbackTask, name='tasks.process_batch_task')
@@ -495,14 +513,15 @@ def process_batch_task(
             'details': []
         }
         
-        # Phase 1: Submit all tasks asynchronously (true parallel processing)
-        async_tasks = []
+        # Process all PDFs sequentially (inline, no subtasks to avoid .get() deadlock)
+        completed = 0
+        total_tasks = len(selected_indices)
         
         for idx, row_idx in enumerate(selected_indices):
             try:
                 row = sheet_data.iloc[row_idx]
                 
-                # Access pandas Series using bracket notation (not .get() which doesn't work the same as dict.get())
+                # Access pandas Series using bracket notation
                 drive_link = row[drive_link_column] if drive_link_column in row and pd.notna(row[drive_link_column]) else ''
                 file_id = extract_file_id_from_drive_link(drive_link)
                 
@@ -520,8 +539,6 @@ def process_batch_task(
                     'drive_link': drive_link
                 }
                 
-                logger.info(f"DEBUG: metadata_columns type: {type(metadata_columns)}, value: {metadata_columns}")
-                
                 for col in metadata_columns:
                     if col in row:
                         row_metadata[col] = str(row[col]) if pd.notna(row[col]) else ""
@@ -530,17 +547,42 @@ def process_batch_task(
                 if namespace_column and namespace_column in row and pd.notna(row[namespace_column]):
                     namespace = str(row[namespace_column])
                 
-                logger.info(f"DEBUG: row_metadata type: {type(row_metadata)}, keys: {row_metadata.keys()}")
+                filename = row_metadata.get('filename', f'file_{file_id}.pdf')
                 
-                # Submit task asynchronously
-                pdf_result = process_pdf_task.apply_async(args=[
-                    file_id,
-                    row_metadata.get('filename', f'file_{file_id}.pdf'),
-                    row_metadata,
-                    product_config,
-                    job_id,
-                    namespace
-                ])
+                # Process PDF inline (no subtask spawning)
+                logger.info(f"Processing {idx + 1}/{total_tasks}: {filename}")
+                pdf_result_data = _process_single_pdf_logic(
+                    file_id=file_id,
+                    filename=filename,
+                    row_metadata=row_metadata,
+                    config=product_config,
+                    job_id=job_id,
+                    namespace=namespace,
+                    progress_callback=None  # Don't update progress for each file step
+                )
+                
+                results['details'].append(pdf_result_data)
+                
+                if pdf_result_data['status'] == 'success':
+                    results['total_pdfs'] += 1
+                    results['total_chunks'] += pdf_result_data.get('chunks', 0)
+                    results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
+                
+                completed += 1
+                
+                # Update progress after each PDF
+                progress_msg = f"Completed {completed}/{total_tasks} PDFs..."
+                self.update_progress(completed, total_tasks, progress_msg)
+                
+                if not preview_mode:
+                    update_celery_job_status(
+                        job_id,
+                        'running',
+                        progress_current=completed,
+                        progress_total=total_tasks,
+                        progress_message=progress_msg
+                    )
+                
             except Exception as e:
                 logger.error(f"Error processing row {row_idx}: {str(e)}\n{traceback.format_exc()}")
                 results['details'].append({
@@ -548,99 +590,7 @@ def process_batch_task(
                     'status': 'error',
                     'error': str(e)
                 })
-                continue
-            
-            async_tasks.append({
-                'task': pdf_result,
-                'file_id': file_id,
-                'row_idx': row_idx,
-                'index': idx
-            })
-        
-        # Phase 2: Collect results as tasks complete (poll for readiness, don't block in order)
-        completed = 0
-        total_tasks = len(async_tasks)
-        task_timeout = 10  # Short timeout for checking if task is ready
-        max_wait_time = 7200  # 2 hours max total wait time for all tasks
-        start_time = time.time()
-        pending_tasks = async_tasks.copy()
-        
-        while pending_tasks and (time.time() - start_time) < max_wait_time:
-            # Check each pending task for readiness
-            for task_info in pending_tasks[:]:  # Iterate over copy to allow removal
-                task = task_info['task']
-                
-                # Check if task is ready (non-blocking)
-                if task.ready():
-                    try:
-                        # Get result with short timeout since we know it's ready
-                        pdf_result_data = task.get(timeout=task_timeout)
-                        results['details'].append(pdf_result_data)
-                        
-                        if pdf_result_data['status'] == 'success':
-                            results['total_pdfs'] += 1
-                            results['total_chunks'] += pdf_result_data.get('chunks', 0)
-                            results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
-                        
-                        completed += 1
-                        pending_tasks.remove(task_info)
-                        
-                        # Update progress in both Celery state and database
-                        progress_msg = f"Completed {completed}/{total_tasks} PDFs..."
-                        self.update_progress(completed, total_tasks, progress_msg)
-                        
-                        if not preview_mode:
-                            update_celery_job_status(
-                                job_id,
-                                'running',
-                                progress_current=completed,
-                                progress_total=total_tasks,
-                                progress_message=progress_msg
-                            )
-                        
-                    except Exception as e:
-                        logger.error(f"Error getting result for {task_info['file_id']}: {str(e)}")
-                        results['details'].append({
-                            'file_id': task_info['file_id'],
-                            'row': task_info['row_idx'],
-                            'status': 'error',
-                            'error': f"Task execution failed: {str(e)}"
-                        })
-                        completed += 1
-                        pending_tasks.remove(task_info)
-                        
-                        # Update progress in both Celery state and database
-                        progress_msg = f"Completed {completed}/{total_tasks} PDFs..."
-                        self.update_progress(completed, total_tasks, progress_msg)
-                        
-                        if not preview_mode:
-                            update_celery_job_status(
-                                job_id,
-                                'running',
-                                progress_current=completed,
-                                progress_total=total_tasks,
-                                progress_message=progress_msg
-                            )
-            
-            # Small delay before next polling iteration to avoid busy waiting
-            if pending_tasks:
-                time.sleep(0.5)
-        
-        # Handle any tasks that timed out
-        for task_info in pending_tasks:
-            logger.error(f"Task for {task_info['file_id']} timed out after {max_wait_time}s")
-            try:
-                task_info['task'].revoke(terminate=True)  # Revoke stuck task
-            except Exception as e:
-                logger.warning(f"Failed to revoke task: {e}")
-            
-            results['details'].append({
-                'file_id': task_info['file_id'],
-                'row': task_info['row_idx'],
-                'status': 'error',
-                'error': f"Task timed out after {max_wait_time} seconds"
-            })
-            completed += 1
+                completed += 1
         
         # Final progress update
         self.update_progress(total_tasks, total_tasks, "Batch processing completed")
