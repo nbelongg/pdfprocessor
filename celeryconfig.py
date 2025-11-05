@@ -85,7 +85,7 @@ def get_redis_url():
     redis_password = os.getenv('REDIS_PASSWORD', '')
     redis_use_tls = os.getenv('REDIS_USE_TLS', 'false').lower() == 'true'
     
-    # Auto-detect environment and set Redis database
+    # Auto-detect environment for key prefixing (Upstash Redis only supports DB 0)
     # Check multiple environment indicators for production
     is_production = (
         os.getenv('REPLIT_DEPLOYMENT') == '1' or  # Replit deployment flag
@@ -93,16 +93,14 @@ def get_redis_url():
         'replit.app' in os.getenv('REPLIT_DOMAINS', '')  # Domain check
     )
     
-    # Use different Redis databases for prod vs dev (prevents cross-contamination)
+    # Upstash Redis only supports database 0, so we use key prefixes for isolation
+    redis_db = '0'  # Always use database 0 (Upstash limitation)
+    
+    # Set environment name for logging and key prefixing
     if is_production:
-        redis_db = '1'  # Production uses database 1
         env_name = 'PRODUCTION'
     else:
-        redis_db = '0'  # Development uses database 0
         env_name = 'DEVELOPMENT'
-    
-    # Allow manual override via environment variable
-    redis_db = os.getenv('REDIS_DB', redis_db)
     
     logger.info(f"Configuring Redis connection (Environment: {env_name}, TLS: {redis_use_tls}, DB: {redis_db})")
     
@@ -153,6 +151,14 @@ def get_redis_url():
 # CELERY INITIALIZATION
 # ============================================
 
+# Detect environment for key prefixing
+is_production = (
+    os.getenv('REPLIT_DEPLOYMENT') == '1' or
+    os.getenv('REPL_SLUG', '').endswith('.replit.app') or
+    'replit.app' in os.getenv('REPLIT_DOMAINS', '')
+)
+env_prefix = 'prod' if is_production else 'dev'
+
 redis_url = get_redis_url()
 
 celery_app = Celery(
@@ -161,6 +167,9 @@ celery_app = Celery(
     backend=redis_url,
     include=['tasks', 'tasks_metadata']
 )
+
+# Set key prefix for environment isolation (since Upstash only supports DB 0)
+logger.info(f"Setting Celery key prefix: '{env_prefix}' for environment isolation")
 
 
 # ============================================
@@ -181,6 +190,15 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     broker_connection_retry=True,
     broker_connection_max_retries=BROKER_CONNECTION_MAX_RETRIES,
+    
+    # Environment isolation via key prefixing (Upstash limitation workaround)
+    broker_transport_options={
+        'global_keyprefix': f'{env_prefix}_',  # Prefix all Redis keys with environment
+        'visibility_timeout': 3600,  # 1 hour visibility timeout
+    },
+    result_backend_transport_options={
+        'global_keyprefix': f'{env_prefix}_',  # Prefix result keys too
+    },
     
     # Task acknowledgment (prevents message loss on worker crash)
     task_acks_late=True,
