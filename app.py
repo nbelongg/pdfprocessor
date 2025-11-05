@@ -16,7 +16,7 @@ from config.constants import (
 
 # Import page modules
 from page_modules import home, products, data_sources, select_files, preview
-from page_modules import process, job_queue, monitoring, status, history, search, metadata_management, diagnostics
+from page_modules import process, job_queue, monitoring, status, history, search, metadata_management, diagnostics, admin_backfill
 
 # Import database utilities for sidebar stats and initialization
 from utils.database import get_products, get_data_sources
@@ -151,7 +151,8 @@ PAGE_RENDERERS = {
     "status": status.render,
     "history": history.render,
     "search": search.render,
-    "diagnostics": diagnostics.render
+    "diagnostics": diagnostics.render,
+    "admin_backfill": admin_backfill.render
 }
 
 # Render the selected page
