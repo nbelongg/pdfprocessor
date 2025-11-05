@@ -154,5 +154,6 @@ The application features a modular architecture:
 
 ### Data Storage
 -   **Pinecone**: Primary vector storage.
--   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text, configuration for data sources, column mappings, jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products. The `parsed_documents` table stores raw parsed content, AI-generated tags, and tagging metadata.
+-   **PostgreSQL**: Processing history, job tracking, chunk storage, raw parsed text, configuration for data sources, column mappings, jobs, chunks, metadata transformations, processed papers, scheduled jobs, and products. 
+    -   **`parsed_documents` table**: Stores raw parsed content (LlamaParse output), AI-generated tags, tagging metadata, **AND complete Google Sheets metadata** (paper title, authors, publication year, topic, drive URL, etc.) in the `file_metadata` JSONB column. This enrichment makes the table a single source of truth for document content + metadata, enabling re-chunking/re-embedding with full metadata preservation (November 2025 - Option 1 Implementation).
 -   **Session State**: Temporary configuration and processing state.
