@@ -417,9 +417,22 @@ def process_batch_task(
     """
     # Use Celery's task ID (already created in celery_jobs table)
     from utils.db.jobs import update_celery_job_status
+    from utils.diagnostic_logger import log_environment_diagnostic
+    
     job_id = self.request.id
     
     try:
+        logger.info("=" * 80)
+        logger.info(f"🎯 TASK EXECUTION STARTED: process_batch_task")
+        logger.info("=" * 80)
+        logger.info(f"Task ID (job_id): {job_id}")
+        logger.info(f"Source ID: {source_id}")
+        logger.info(f"Papers to process: {len(selected_indices)}")
+        logger.info(f"Preview mode: {preview_mode}")
+        
+        # Log comprehensive environment info when task starts
+        log_environment_diagnostic()
+        
         logger.info(f"Starting batch task: job_id={job_id}, source_id={source_id}, papers={len(selected_indices)}")
         
         # CRITICAL: Update status to 'running' FIRST (before any failures can occur)

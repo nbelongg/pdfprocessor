@@ -602,6 +602,15 @@ def _trigger_processing_job(
         import uuid
         from tasks import process_batch_task
         from utils.db.jobs import create_celery_job
+        from utils.diagnostic_logger import (
+            log_environment_diagnostic,
+            log_task_submission,
+            log_task_submission_success,
+            log_task_submission_failure
+        )
+        
+        # Log comprehensive environment info
+        log_environment_diagnostic()
         
         job_id = str(uuid.uuid4())
         
@@ -619,18 +628,33 @@ def _trigger_processing_job(
             logger.error(f"❌ FAILED to create Celery job: {create_error}")
             raise
         
+        # Log comprehensive task submission info
+        log_task_submission(
+            task_id=job_id,
+            task_name=f"On-Demand: {source['name']}",
+            source_id=source['id'],
+            queue='batch_processing',
+            row_count=len(rows_to_process)
+        )
+        
         # Submit async task to Celery (non-blocking)
         logger.info(f"Submitting task to batch_processing queue: source_id={source['id']}, rows={len(rows_to_process)}")
-        process_batch_task.apply_async(
-            args=[
-                source['id'],
-                rows_to_process,
-                config,
-                False  # preview_mode=False
-            ],
-            task_id=job_id,
-            queue='batch_processing'  # Must match task_routes in celeryconfig.py
-        )
+        try:
+            result = process_batch_task.apply_async(
+                args=[
+                    source['id'],
+                    rows_to_process,
+                    config,
+                    False  # preview_mode=False
+                ],
+                task_id=job_id,
+                queue='batch_processing'  # Must match task_routes in celeryconfig.py
+            )
+            log_task_submission_success(job_id)
+            logger.info(f"✅ apply_async returned: {result}")
+        except Exception as async_error:
+            log_task_submission_failure(job_id, async_error)
+            raise
         
         return {
             'success': True,

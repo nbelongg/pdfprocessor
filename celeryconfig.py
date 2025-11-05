@@ -259,26 +259,46 @@ def task_prerun_handler(sender=None, task_id=None, task=None, **kwargs):
         **kwargs: Additional signal parameters
     """
     from utils.db.jobs import update_celery_job_status, get_celery_job
+    from utils.diagnostic_logger import (
+        log_signal_handler_entry,
+        log_signal_handler_db_attempt,
+        log_signal_handler_success,
+        log_signal_handler_failure,
+        log_worker_task_received
+    )
     
     try:
+        log_signal_handler_entry('task_prerun', task_id)
+        log_worker_task_received(task_id, task.name if task else 'unknown')
+        
         # Check if this job exists in our tracking table
+        logger.info(f"🔍 Attempting to fetch job from database: task_id={task_id}")
         job = get_celery_job(task_id)
         
-        if job and job['status'] == 'pending':
-            logger.info(f"🔔 Signal: Task {task_id} starting, updating status to 'running'")
-            update_celery_job_status(
-                task_id, 
-                'running',
-                progress_message='Task execution started via signal handler'
-            )
-        elif job:
-            logger.debug(f"🔔 Signal: Task {task_id} already has status '{job['status']}'")
+        if job:
+            logger.info(f"✅ Job found in database: status={job['status']}")
+            
+            if job['status'] == 'pending':
+                log_signal_handler_db_attempt('task_prerun', task_id, 'running')
+                logger.info(f"🔔 Signal: Task {task_id} starting, updating status to 'running'")
+                update_celery_job_status(
+                    task_id, 
+                    'running',
+                    progress_message='Task execution started via signal handler'
+                )
+                log_signal_handler_success('task_prerun', task_id)
+            else:
+                logger.debug(f"🔔 Signal: Task {task_id} already has status '{job['status']}'")
         else:
-            logger.debug(f"🔔 Signal: Task {task_id} not found in celery_jobs table (may be preview mode)")
+            logger.warning(f"⚠️ Task {task_id} NOT FOUND in celery_jobs table!")
+            logger.warning(f"⚠️ This could mean: 1) Preview mode, 2) DB connection issue, 3) Job not created")
             
     except Exception as e:
         # Don't fail the task just because status tracking failed
-        logger.warning(f"⚠️ Signal handler failed to update status for {task_id}: {e}")
+        log_signal_handler_failure('task_prerun', task_id, e)
+        logger.error(f"❌ CRITICAL: Signal handler exception type: {type(e).__name__}")
+        logger.error(f"❌ CRITICAL: Signal handler exception message: {str(e)}")
+        logger.exception("Full traceback:")
 
 
 @signals.task_failure.connect
@@ -297,8 +317,16 @@ def task_failure_handler(sender=None, task_id=None, exception=None, traceback=No
         **kwargs: Additional signal parameters
     """
     from utils.db.jobs import update_celery_job_status, get_celery_job
+    from utils.diagnostic_logger import (
+        log_signal_handler_entry,
+        log_signal_handler_db_attempt,
+        log_signal_handler_success,
+        log_signal_handler_failure
+    )
     
     try:
+        log_signal_handler_entry('task_failure', task_id)
+        
         job = get_celery_job(task_id)
         
         if job:
@@ -307,17 +335,20 @@ def task_failure_handler(sender=None, task_id=None, exception=None, traceback=No
             
             # Only update if not already marked as failed (task may have handled it)
             if job['status'] != 'failed':
+                log_signal_handler_db_attempt('task_failure', task_id, 'failed')
                 update_celery_job_status(
                     task_id,
                     'failed',
                     error_message=error_message[:1000]  # Truncate long errors
                 )
+                log_signal_handler_success('task_failure', task_id)
         else:
-            logger.debug(f"🔔 Signal: Failed task {task_id} not found in celery_jobs table")
+            logger.warning(f"⚠️ Failed task {task_id} NOT FOUND in celery_jobs table!")
             
     except Exception as e:
         # Don't fail the task just because status tracking failed
-        logger.warning(f"⚠️ Failure signal handler error for {task_id}: {e}")
+        log_signal_handler_failure('task_failure', task_id, e)
+        logger.exception("Full traceback:")
 
 
 @signals.task_success.connect
