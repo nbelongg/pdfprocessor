@@ -254,16 +254,7 @@ def process_multi_source_pipeline(
                     product_config
                 )
                 
-                # Save the expensive parsed text for future re-processing
-                from utils.database import save_parsed_document
-                save_parsed_document(
-                    file_id=file_id,
-                    filename=file_metadata.get('name', f'file_{file_id}.pdf'),
-                    parsed_text=parsed_text,
-                    parsing_config=product_config,
-                    file_metadata=file_metadata
-                )
-                
+                # Build row_metadata first (we'll save parsed document with metadata later)
                 row_metadata = {
                     'file_id': file_id,
                     'filename': file_metadata.get('name', ''),
@@ -365,6 +356,18 @@ def process_multi_source_pipeline(
                         logger.info(f"🏷️  Using {len(spreadsheet_tags)} spreadsheet tags (AI tagging disabled): {spreadsheet_tags}")
                     else:
                         logger.info(f"🏷️  No tags available (AI tagging disabled, no spreadsheet tags)")
+                
+                # NOW save the expensive parsed text with complete metadata (including tags)
+                # This enriches parsed_documents with Google Sheets metadata (title, authors, year, topic, etc.)
+                from utils.database import save_parsed_document
+                save_parsed_document(
+                    file_id=file_id,
+                    filename=file_metadata.get('name', f'file_{file_id}.pdf'),
+                    parsed_text=parsed_text,
+                    parsing_config=product_config,
+                    file_metadata=file_metadata,
+                    sheet_metadata=row_metadata  # Include complete Google Sheets metadata with tags
+                )
                 
                 if progress_callback:
                     progress_callback(

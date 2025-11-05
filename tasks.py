@@ -220,13 +220,15 @@ def _process_single_pdf_logic(
                 }
             )
         
-        # Save the expensive parsed text for future re-processing
+        # Save the expensive parsed text for future re-processing WITH Google Sheets metadata
+        # This enriches the parsed_documents table with paper title, authors, year, topic, etc.
         save_parsed_document(
             file_id=file_id,
             filename=filename,
             parsed_text=parsed_text,
             parsing_config=config,
-            file_metadata=file_metadata
+            file_metadata=file_metadata,
+            sheet_metadata=row_metadata  # Include Google Sheets metadata
         )
         
         # Generate AI tags if enabled in product configuration

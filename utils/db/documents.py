@@ -23,8 +23,23 @@ logger = logging.getLogger(__name__)
 
 @with_db_error_handling
 def save_parsed_document(file_id: str, filename: str, parsed_text: str, 
-                         parsing_config: Dict = None, file_metadata: Dict = None):
-    """Save raw parsed text from LlamaParse for future re-processing (as JSON)."""
+                         parsing_config: Dict = None, file_metadata: Dict = None,
+                         sheet_metadata: Dict = None):
+    """
+    Save raw parsed text from LlamaParse for future re-processing (as JSON).
+    
+    Args:
+        file_id: Google Drive file ID
+        filename: PDF filename
+        parsed_text: Parsed text from LlamaParse
+        parsing_config: LlamaParse configuration used
+        file_metadata: Google Drive file metadata (size, dates, etc.)
+        sheet_metadata: Google Sheets row metadata (title, authors, year, topic, etc.)
+    
+    The file_metadata JSONB column will contain merged data:
+    - Google Drive metadata (id, name, size, mimeType, createdTime, modifiedTime)
+    - Google Sheets metadata (paper_title, authors, publication_year, topic, drive_link, etc.)
+    """
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             # Convert parsed text to JSON structure
@@ -37,6 +52,21 @@ def save_parsed_document(file_id: str, filename: str, parsed_text: str,
             else:
                 # If already a dict/object, use as-is
                 parsed_json = parsed_text
+            
+            # Merge Google Drive metadata with Google Sheets metadata
+            merged_metadata = {}
+            
+            # Start with Google Drive metadata (base layer)
+            if file_metadata:
+                merged_metadata.update(file_metadata)
+            
+            # Add/override with Google Sheets metadata (enrichment layer)
+            if sheet_metadata:
+                merged_metadata.update(sheet_metadata)
+            
+            # Ensure we have a drive_url constructed from file_id
+            if file_id and 'drive_url' not in merged_metadata:
+                merged_metadata['drive_url'] = f"https://drive.google.com/file/d/{file_id}/view"
             
             cur.execute(
                 """
@@ -60,7 +90,7 @@ def save_parsed_document(file_id: str, filename: str, parsed_text: str,
                     parsing_config.get('parsing_mode') if parsing_config else None,
                     parsing_config.get('result_type') if parsing_config else None,
                     Json(parsing_config) if parsing_config else None,
-                    Json(file_metadata) if file_metadata else None
+                    Json(merged_metadata) if merged_metadata else None
                 )
             )
 
