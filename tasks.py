@@ -475,7 +475,7 @@ def process_batch_task(
         
         sheet_data = load_sheet_data(
             source_info['sheet_url'],
-            source_info['sheet_tab_name'],
+            source_info['sheet_tab'],
             product_config['google_credentials']
         )
         
