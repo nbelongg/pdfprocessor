@@ -40,12 +40,12 @@ outputType = "webview"
 name = "Worker"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "celery -A celeryconfig worker --loglevel=info --concurrency=3"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "celery -A celeryconfig worker --loglevel=info --concurrency=2"
 
 [[ports]]
 localPort = 5000

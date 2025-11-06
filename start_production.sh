@@ -5,7 +5,7 @@ echo "=================================="
 
 # Start Celery worker in background
 echo "📦 Starting Celery Worker..."
-celery -A celeryconfig worker --loglevel=info --concurrency=3 &
+celery -A celeryconfig worker --loglevel=info --concurrency=2 &
 WORKER_PID=$!
 echo "✅ Celery Worker started (PID: $WORKER_PID)"
 
