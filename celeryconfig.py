@@ -36,7 +36,7 @@ TASK_HARD_TIME_LIMIT = 10800  # 3 hours - hard kill for hung tasks (increased fo
 TASK_SOFT_TIME_LIMIT = 10500  # 2h 55min - warning before hard kill
 
 # Worker settings
-WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after N tasks (prevents memory leaks)
+WORKER_MAX_TASKS_PER_CHILD = 10  # Restart worker after N tasks (prevents memory leaks) - reduced from 50 for better memory management
 WORKER_PREFETCH_MULTIPLIER = 1   # Only fetch 1 task at a time (good for long-running tasks)
 
 # Retry settings
