@@ -249,7 +249,9 @@ def init_celery_tables():
                     submitted_by VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP
+                    completed_at TIMESTAMP,
+                    new_papers_count INTEGER DEFAULT 0,
+                    skipped_papers_count INTEGER DEFAULT 0
                 )
             """)
             
@@ -259,6 +261,26 @@ def init_celery_tables():
             
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_celery_jobs_status ON celery_jobs(status)
+            """)
+            
+            # Add new columns to existing tables (safe migration)
+            cur.execute("""
+                DO $$ 
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='celery_jobs' AND column_name='new_papers_count'
+                    ) THEN
+                        ALTER TABLE celery_jobs ADD COLUMN new_papers_count INTEGER DEFAULT 0;
+                    END IF;
+                    
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='celery_jobs' AND column_name='skipped_papers_count'
+                    ) THEN
+                        ALTER TABLE celery_jobs ADD COLUMN skipped_papers_count INTEGER DEFAULT 0;
+                    END IF;
+                END $$;
             """)
 
 
@@ -326,6 +348,12 @@ def update_celery_job_status(task_id: str, status: str, **kwargs):
             if 'error_message' in kwargs:
                 set_clauses.append("error_message = %s")
                 values.append(kwargs['error_message'])
+            if 'new_papers_count' in kwargs:
+                set_clauses.append("new_papers_count = %s")
+                values.append(kwargs['new_papers_count'])
+            if 'skipped_papers_count' in kwargs:
+                set_clauses.append("skipped_papers_count = %s")
+                values.append(kwargs['skipped_papers_count'])
             if status in ['completed', 'failed']:
                 set_clauses.append("completed_at = CURRENT_TIMESTAMP")
             

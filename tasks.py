@@ -40,6 +40,7 @@ from utils.database import (
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.exceptions import TransientError
 from utils.config_builder import build_product_config
+from utils.deduplication import check_all_layers, record_or_update_paper
 from utils.monitoring import (
     track_api_cost, calculate_llamaparse_cost, calculate_openai_embedding_cost,
     estimate_tokens_from_text, update_job_runtime, save_to_failed_queue
@@ -512,12 +513,18 @@ def process_batch_task(
             'total_chunks': 0,
             'total_embeddings': 0,
             'vectors_stored': 0,
+            'new_papers_count': 0,
+            'skipped_papers_count': 0,
             'details': []
         }
         
         # Process all PDFs sequentially (inline, no subtasks to avoid .get() deadlock)
         completed = 0
         total_tasks = len(selected_indices)
+        
+        # Get deduplication settings from product config
+        enable_dedup_l1 = product_config.get('dedup_layer1', True)
+        enable_dedup_l2 = product_config.get('dedup_layer2', True)
         
         for idx, row_idx in enumerate(selected_indices):
             try:
@@ -533,6 +540,7 @@ def process_batch_task(
                         'status': 'skipped',
                         'reason': 'No valid Drive link found'
                     })
+                    results['skipped_papers_count'] += 1
                     continue
                 
                 row_metadata = {
@@ -550,6 +558,40 @@ def process_batch_task(
                     namespace = str(row[namespace_column])
                 
                 filename = row_metadata.get('filename', f'file_{file_id}.pdf')
+                
+                # Check for duplicates before processing (unless in preview mode)
+                if not preview_mode:
+                    paper_title_col = column_mapping.get('paper_title', '')
+                    paper_title = row[paper_title_col] if paper_title_col and paper_title_col in row and pd.notna(row[paper_title_col]) else ''
+                    
+                    authors_col = column_mapping.get('authors', '')
+                    authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
+                    
+                    dedup_result = check_all_layers(
+                        drive_file_id=file_id,
+                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                        authors=str(authors) if pd.notna(authors) else '',
+                        embedding=None,
+                        namespace=namespace,
+                        pinecone_index=None,
+                        enable_layer1=enable_dedup_l1,
+                        enable_layer2=enable_dedup_l2,
+                        enable_layer3=False
+                    )
+                    
+                    if dedup_result['is_duplicate']:
+                        logger.info(f"Skipping duplicate paper: {filename} (Layer: {dedup_result['duplicate_layer']})")
+                        results['details'].append({
+                            'row': row_idx,
+                            'file_id': file_id,
+                            'filename': filename,
+                            'status': 'skipped',
+                            'reason': f"Duplicate detected ({dedup_result['duplicate_layer']})",
+                            'existing_paper': dedup_result.get('existing_paper')
+                        })
+                        results['skipped_papers_count'] += 1
+                        completed += 1
+                        continue
                 
                 # Process PDF inline (no subtask spawning)
                 logger.info(f"Processing {idx + 1}/{total_tasks}: {filename}")
@@ -569,6 +611,7 @@ def process_batch_task(
                     results['total_pdfs'] += 1
                     results['total_chunks'] += pdf_result_data.get('chunks', 0)
                     results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
+                    results['new_papers_count'] += 1
                 
                 completed += 1
                 
@@ -603,8 +646,10 @@ def process_batch_task(
                 'completed',
                 progress_current=total_tasks,
                 progress_total=total_tasks,
-                progress_message=f"Completed! Processed {results['total_pdfs']} PDFs",
-                result=results
+                progress_message=f"Completed! Processed {results['new_papers_count']} new papers, skipped {results['skipped_papers_count']} duplicates",
+                result=results,
+                new_papers_count=results['new_papers_count'],
+                skipped_papers_count=results['skipped_papers_count']
             )
         
         return results

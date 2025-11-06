@@ -257,6 +257,19 @@ def _render_job_card(job: Dict):
             elif progress_message:
                 st.info(progress_message)
             
+            # Show new vs skipped papers count (if available)
+            new_papers_count = job.get('new_papers_count')
+            skipped_papers_count = job.get('skipped_papers_count')
+            
+            if new_papers_count is not None or skipped_papers_count is not None:
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if new_papers_count is not None:
+                        st.metric("✅ New Papers Processed", new_papers_count)
+                with col_b:
+                    if skipped_papers_count is not None:
+                        st.metric("⏭️ Duplicates Skipped", skipped_papers_count)
+            
             # Error message
             if job.get('error_message'):
                 st.error(f"**Error:** {job['error_message']}")
@@ -839,6 +852,26 @@ def _render_job_details(job: Dict):
         st.progress(job.get('progress_current', 0) / job['progress_total'], text=f"{progress_pct}%")
         if job.get('progress_message'):
             st.info(job['progress_message'])
+    
+    # Processing Statistics (new vs skipped papers)
+    new_papers_count = job.get('new_papers_count')
+    skipped_papers_count = job.get('skipped_papers_count')
+    
+    if new_papers_count is not None or skipped_papers_count is not None:
+        st.markdown("#### Processing Statistics")
+        col_stats1, col_stats2, col_stats3 = st.columns(3)
+        
+        with col_stats1:
+            if job.get('progress_total', 0) > 0:
+                st.metric("Total Papers in Sheet", job.get('progress_total', 0))
+        
+        with col_stats2:
+            if new_papers_count is not None:
+                st.metric("✅ New Papers Processed", new_papers_count)
+        
+        with col_stats3:
+            if skipped_papers_count is not None:
+                st.metric("⏭️ Duplicates Skipped", skipped_papers_count)
     
     # Error message
     if job.get('error_message'):
