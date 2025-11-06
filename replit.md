@@ -41,12 +41,12 @@ Preferred communication style: Simple, everyday language.
 -   **Metadata-Only Updates**: Efficiently update metadata without re-parsing PDFs or regenerating embeddings, using metadata fingerprints for change detection.
 -   **Hash-Based Paper Detection**: Position-independent detection of new papers in Google Sheets using Drive File ID or content hash.
 -   **Scheduled Processing**: Automatic processing of new documents.
--   **Processing History & Tracking**: Persistent job details in PostgreSQL.
+-   **Processing History & Tracking**: Persistent job details in PostgreSQL with deduplication metrics (new papers processed vs duplicates skipped).
 -   **Preview Mode**: Visualize parsed and chunked PDFs.
 -   **Vector Search Testing**: In-app tool for querying Pinecone.
 -   **Multi-Product/Multi-Startup Support**: Isolated configurations, Pinecone indexes, and API keys.
 -   **Parsed Content Persistence**: Raw LlamaParse output stored in PostgreSQL for reprocessing.
--   **Job Management & Monitoring**: Real-time Celery job monitoring, on-demand triggers, and detailed history.
+-   **Job Management & Monitoring**: Real-time Celery job monitoring with deduplication statistics, on-demand triggers, and detailed history.
 
 ### UI/UX Decisions
 -   **Navigation**: Left sidebar.
