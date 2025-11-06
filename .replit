@@ -45,7 +45,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "celery -A celeryconfig worker --loglevel=info --concurrency=2"
+args = "celery -A celeryconfig worker --loglevel=info --concurrency=3"
 
 [[ports]]
 localPort = 5000
