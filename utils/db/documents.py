@@ -221,26 +221,56 @@ def is_document_tagged(file_id: str) -> bool:
 # ===== Deduplication =====
 
 @with_db_error_handling
-def check_paper_processed(drive_file_id: str) -> Optional[Dict[str, Any]]:
-    """Check if a paper has been processed before by Drive file ID."""
+def check_paper_processed(drive_file_id: str, product_id: int = None) -> Optional[Dict[str, Any]]:
+    """
+    Check if a paper has been processed before by Drive file ID.
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        Existing paper record if found, None otherwise
+    """
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM processed_papers WHERE drive_file_id = %s",
-                (drive_file_id,)
-            )
+            if product_id is not None:
+                cur.execute(
+                    "SELECT * FROM processed_papers WHERE drive_file_id = %s AND product_id = %s",
+                    (drive_file_id, product_id)
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM processed_papers WHERE drive_file_id = %s",
+                    (drive_file_id,)
+                )
             return _row_to_dict(cur.fetchone())
 
 
 @with_db_error_handling
-def check_paper_by_content_hash(content_hash: str) -> Optional[Dict[str, Any]]:
-    """Check if a paper has been processed before by content hash."""
+def check_paper_by_content_hash(content_hash: str, product_id: int = None) -> Optional[Dict[str, Any]]:
+    """
+    Check if a paper has been processed before by content hash.
+    
+    Args:
+        content_hash: SHA256 hash of title + authors
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        Existing paper record if found, None otherwise
+    """
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM processed_papers WHERE content_hash = %s",
-                (content_hash,)
-            )
+            if product_id is not None:
+                cur.execute(
+                    "SELECT * FROM processed_papers WHERE content_hash = %s AND product_id = %s",
+                    (content_hash, product_id)
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM processed_papers WHERE content_hash = %s",
+                    (content_hash,)
+                )
             return _row_to_dict(cur.fetchone())
 
 
@@ -254,19 +284,37 @@ def record_processed_paper(
     pinecone_namespace: str,
     source_id: int,
     row_number: int,
-    metadata_fingerprint: str = None
+    metadata_fingerprint: str = None,
+    product_id: int = None
 ) -> int:
-    """Record a newly processed paper with optional metadata fingerprint."""
+    """
+    Record a newly processed paper with optional metadata fingerprint and product ID.
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        content_hash: SHA256 hash of title + authors
+        paper_title: Paper title
+        authors: Paper authors
+        metadata: Paper metadata
+        pinecone_namespace: Pinecone namespace
+        source_id: Data source ID
+        row_number: Row number in sheet
+        metadata_fingerprint: Optional metadata fingerprint for change detection
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        ID of the created/updated paper record
+    """
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO processed_papers
-                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace, metadata_fingerprint, metadata_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace, metadata_fingerprint, metadata_json, product_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace, metadata_fingerprint, Json(metadata) if metadata_fingerprint else None)
+                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace, metadata_fingerprint, Json(metadata) if metadata_fingerprint else None, product_id)
             )
             paper_id = cur.fetchone()['id']
             
