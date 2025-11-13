@@ -290,6 +290,10 @@ def record_processed_paper(
     """
     Record a newly processed paper with optional metadata fingerprint and product ID.
     
+    This function uses dual partial unique indexes to support both:
+    - Legacy/global scope (product_id=NULL): one row per drive_file_id
+    - Product-scoped (product_id NOT NULL): one row per (drive_file_id, product_id) pair
+    
     Args:
         drive_file_id: Google Drive file ID
         content_hash: SHA256 hash of title + authors
@@ -307,21 +311,59 @@ def record_processed_paper(
     """
     with get_db_transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO processed_papers
-                (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace, metadata_fingerprint, metadata_json, product_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace, metadata_fingerprint, Json(metadata) if metadata_fingerprint else None, product_id)
-            )
-            paper_id = cur.fetchone()['id']
+            # First check if paper already exists for this drive_file_id + product_id combination
+            if product_id is not None:
+                cur.execute(
+                    "SELECT id FROM processed_papers WHERE drive_file_id = %s AND product_id = %s",
+                    (drive_file_id, product_id)
+                )
+            else:
+                cur.execute(
+                    "SELECT id FROM processed_papers WHERE drive_file_id = %s AND product_id IS NULL",
+                    (drive_file_id,)
+                )
             
+            existing = cur.fetchone()
+            
+            if existing:
+                # Update existing record
+                paper_id = existing['id']
+                cur.execute(
+                    """
+                    UPDATE processed_papers
+                    SET content_hash = %s,
+                        paper_title = %s,
+                        authors = %s,
+                        metadata = %s,
+                        pinecone_namespace = %s,
+                        metadata_fingerprint = %s,
+                        metadata_json = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (content_hash, paper_title, authors, Json(metadata), pinecone_namespace, 
+                     metadata_fingerprint, Json(metadata) if metadata_fingerprint else None, paper_id)
+                )
+            else:
+                # Insert new record
+                cur.execute(
+                    """
+                    INSERT INTO processed_papers
+                    (drive_file_id, content_hash, paper_title, authors, metadata, pinecone_namespace, metadata_fingerprint, metadata_json, product_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (drive_file_id, content_hash, paper_title, authors, Json(metadata), pinecone_namespace, 
+                     metadata_fingerprint, Json(metadata) if metadata_fingerprint else None, product_id)
+                )
+                paper_id = cur.fetchone()['id']
+            
+            # Record or update source-paper mapping
             cur.execute(
                 """
                 INSERT INTO source_paper_mapping (source_id, paper_id, row_number)
                 VALUES (%s, %s, %s)
+                ON CONFLICT (source_id, paper_id) DO UPDATE SET row_number = EXCLUDED.row_number
                 """,
                 (source_id, paper_id, row_number)
             )
