@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Features
 -   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources.
--   **Deduplication**: Three-layer system (Drive file ID, content hash, optional embedding similarity).
+-   **Product-Scoped Deduplication**: Three-layer system (Drive file ID, content hash, optional embedding similarity) with product isolation. Same paper can be processed into multiple products with different embedding dimensions while preventing duplicates within each product. Uses dual partial unique indexes for clean separation between global (NULL product_id) and product-specific entries.
 -   **Admin Maintenance Tools**: Production-accessible pages for backfilling deduplication records and enriching metadata.
 -   **Metadata-Only Updates**: Efficiently update metadata without re-parsing PDFs or regenerating embeddings, using metadata fingerprints for change detection.
 -   **Hash-Based Paper Detection**: Position-independent detection of new papers in Google Sheets using Drive File ID or content hash.
@@ -61,6 +61,10 @@ Preferred communication style: Simple, everyday language.
 -   **Isolation**: Separate Pinecone indexes, API keys, and credentials per product.
 -   **Configuration**: Each product stores its specific processing settings (parsing modes, result types, parallel workers, error tolerance) and secret names (referencing Replit secrets).
 -   **Centralized Config Builder**: `utils/config_builder.py` provides a single source of truth for building product configurations from the database.
+-   **Product-Scoped Deduplication**: The `processed_papers` table uses dual partial unique indexes to allow the same paper (Drive File ID) to be processed into multiple products while preventing duplicates within each product:
+    -   `processed_papers_drive_file_id_null_idx`: UNIQUE (drive_file_id) WHERE product_id IS NULL (legacy/global scope)
+    -   `processed_papers_drive_file_id_product_id_idx`: UNIQUE (drive_file_id, product_id) WHERE product_id IS NOT NULL (product-scoped)
+    -   Example: Paper XYZ can be processed into Product 1 (1536-dim embeddings) and Product 7 (384-dim embeddings) simultaneously, with deduplication enforced separately for each product.
 
 ## External Dependencies
 
