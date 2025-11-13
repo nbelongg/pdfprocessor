@@ -489,8 +489,9 @@ def process_batch_task(
         logger.info(f"✅ Data source found: {source_info.get('name', 'Unknown')}")
         
         # Apply product-specific configuration using centralized builder
-        if source_info.get('product_id'):
-            product_config = build_product_config(source_info['product_id'], base_config=config)
+        product_id = source_info.get('product_id')
+        if product_id:
+            product_config = build_product_config(product_id, base_config=config)
         else:
             product_config = config.copy()
         
@@ -576,7 +577,8 @@ def process_batch_task(
                         pinecone_index=None,
                         enable_layer1=enable_dedup_l1,
                         enable_layer2=enable_dedup_l2,
-                        enable_layer3=False
+                        enable_layer3=False,
+                        product_id=product_id
                     )
                     
                     if dedup_result['is_duplicate']:

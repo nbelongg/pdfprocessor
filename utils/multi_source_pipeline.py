@@ -90,11 +90,12 @@ def process_multi_source_pipeline(
         
         # Load product-specific configuration using centralized builder
         product_index = None
+        product_id = source_info.get('product_id')
         
-        if source_info.get('product_id'):
+        if product_id:
             try:
                 # Build product-specific config using centralized function
-                product_config = build_product_config(source_info['product_id'], base_config=config)
+                product_config = build_product_config(product_id, base_config=config)
                 
                 # Initialize product-specific Pinecone index if not already done
                 if not preview_mode and product_index is None:
@@ -204,7 +205,8 @@ def process_multi_source_pipeline(
                         pinecone_index=None,
                         enable_layer1=enable_dedup_l1,
                         enable_layer2=enable_dedup_l2,
-                        enable_layer3=False
+                        enable_layer3=False,
+                        product_id=product_id
                     )
                     
                     if dedup_result['is_duplicate']:
@@ -229,7 +231,8 @@ def process_multi_source_pipeline(
                             source_id=source_id,
                             row_number=sheet_row,  # Use actual Google Sheets row number
                             is_duplicate=True,
-                            existing_paper=dedup_result['existing_paper']
+                            existing_paper=dedup_result['existing_paper'],
+                            product_id=product_id
                         )
                         continue
                 
@@ -447,7 +450,8 @@ def process_multi_source_pipeline(
                         row_number=sheet_row,  # Use actual Google Sheets row number
                         is_duplicate=False,
                         existing_paper=None,
-                        metadata_fingerprint=metadata_fp
+                        metadata_fingerprint=metadata_fp,
+                        product_id=product_id
                     )
                 
                 results['total_pdfs'] += 1

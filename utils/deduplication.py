@@ -39,26 +39,39 @@ def generate_content_hash(paper_title: str, authors: str) -> str:
     content = f"{normalized_title}|{normalized_authors}"
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-def check_duplicate_layer1(drive_file_id: str) -> Tuple[bool, Optional[Dict]]:
+def check_duplicate_layer1(drive_file_id: str, product_id: int = None) -> Tuple[bool, Optional[Dict]]:
     """
     Layer 1: Check if paper already processed by Drive file ID.
-    Returns: (is_duplicate, existing_paper_data)
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        (is_duplicate, existing_paper_data)
     """
-    existing = check_paper_processed(drive_file_id)
+    existing = check_paper_processed(drive_file_id, product_id)
     if existing:
         return True, existing
     return False, None
 
-def check_duplicate_layer2(paper_title: str, authors: str) -> Tuple[bool, Optional[Dict]]:
+def check_duplicate_layer2(paper_title: str, authors: str, product_id: int = None) -> Tuple[bool, Optional[Dict]]:
     """
     Layer 2: Check if paper already processed by content hash (title + authors).
-    Returns: (is_duplicate, existing_paper_data)
+    
+    Args:
+        paper_title: Paper title
+        authors: Paper authors  
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        (is_duplicate, existing_paper_data)
     """
     if not paper_title and not authors:
         return False, None
     
     content_hash = generate_content_hash(paper_title, authors)
-    existing = check_paper_by_content_hash(content_hash)
+    existing = check_paper_by_content_hash(content_hash, product_id)
     if existing:
         return True, existing
     return False, None
@@ -102,21 +115,37 @@ def check_all_layers(
     enable_layer1: bool = True,
     enable_layer2: bool = True,
     enable_layer3: bool = False,
-    similarity_threshold: float = 0.95
+    similarity_threshold: float = 0.95,
+    product_id: int = None
 ) -> Dict:
     """
-    Check all enabled deduplication layers.
-    Returns: {
-        'is_duplicate': bool,
-        'duplicate_layer': str (None, 'layer1', 'layer2', or 'layer3'),
-        'existing_paper': Dict or None,
-        'content_hash': str
-    }
+    Check all enabled deduplication layers with optional product-scoped checking.
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        paper_title: Paper title
+        authors: Paper authors
+        embedding: Optional embedding vector for Layer 3
+        namespace: Pinecone namespace
+        pinecone_index: Pinecone index instance
+        enable_layer1: Enable Drive File ID check
+        enable_layer2: Enable content hash check
+        enable_layer3: Enable embedding similarity check
+        similarity_threshold: Threshold for Layer 3 similarity (default 0.95)
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        {
+            'is_duplicate': bool,
+            'duplicate_layer': str (None, 'layer1', 'layer2', or 'layer3'),
+            'existing_paper': Dict or None,
+            'content_hash': str
+        }
     """
     content_hash = generate_content_hash(paper_title, authors)
     
     if enable_layer1:
-        is_dup, existing = check_duplicate_layer1(drive_file_id)
+        is_dup, existing = check_duplicate_layer1(drive_file_id, product_id)
         if is_dup:
             return {
                 'is_duplicate': True,
@@ -126,7 +155,7 @@ def check_all_layers(
             }
     
     if enable_layer2:
-        is_dup, existing = check_duplicate_layer2(paper_title, authors)
+        is_dup, existing = check_duplicate_layer2(paper_title, authors, product_id)
         if is_dup:
             return {
                 'is_duplicate': True,
@@ -163,9 +192,29 @@ def record_or_update_paper(
     row_number: int,
     is_duplicate: bool,
     existing_paper: Optional[Dict] = None,
-    metadata_fingerprint: str = None
+    metadata_fingerprint: str = None,
+    product_id: int = None
 ) -> int:
-    """Record new paper or update existing one with optional metadata fingerprint."""
+    """
+    Record new paper or update existing one with optional metadata fingerprint and product ID.
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        content_hash: SHA256 hash of title + authors
+        paper_title: Paper title
+        authors: Paper authors
+        metadata: Paper metadata
+        pinecone_namespace: Pinecone namespace
+        source_id: Data source ID
+        row_number: Row number in sheet
+        is_duplicate: Whether this is a duplicate
+        existing_paper: Existing paper data if duplicate
+        metadata_fingerprint: Optional metadata fingerprint
+        product_id: Optional product ID for product-scoped deduplication
+        
+    Returns:
+        Paper ID
+    """
     if is_duplicate and existing_paper:
         paper_id = existing_paper['id']
         update_processed_paper(paper_id, source_id, row_number)
@@ -180,5 +229,6 @@ def record_or_update_paper(
             pinecone_namespace,
             source_id,
             row_number,
-            metadata_fingerprint
+            metadata_fingerprint,
+            product_id
         )
