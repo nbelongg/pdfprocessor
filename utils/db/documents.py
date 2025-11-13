@@ -225,6 +225,9 @@ def check_paper_processed(drive_file_id: str, product_id: int = None) -> Optiona
     """
     Check if a paper has been processed before by Drive file ID.
     
+    When product_id is None, only checks global scope (product_id IS NULL).
+    When product_id is provided, only checks that specific product scope.
+    
     Args:
         drive_file_id: Google Drive file ID
         product_id: Optional product ID for product-scoped deduplication
@@ -240,8 +243,9 @@ def check_paper_processed(drive_file_id: str, product_id: int = None) -> Optiona
                     (drive_file_id, product_id)
                 )
             else:
+                # Explicitly filter for NULL product_id (global scope)
                 cur.execute(
-                    "SELECT * FROM processed_papers WHERE drive_file_id = %s",
+                    "SELECT * FROM processed_papers WHERE drive_file_id = %s AND product_id IS NULL",
                     (drive_file_id,)
                 )
             return _row_to_dict(cur.fetchone())
@@ -251,6 +255,9 @@ def check_paper_processed(drive_file_id: str, product_id: int = None) -> Optiona
 def check_paper_by_content_hash(content_hash: str, product_id: int = None) -> Optional[Dict[str, Any]]:
     """
     Check if a paper has been processed before by content hash.
+    
+    When product_id is None, only checks global scope (product_id IS NULL).
+    When product_id is provided, only checks that specific product scope.
     
     Args:
         content_hash: SHA256 hash of title + authors
@@ -267,8 +274,9 @@ def check_paper_by_content_hash(content_hash: str, product_id: int = None) -> Op
                     (content_hash, product_id)
                 )
             else:
+                # Explicitly filter for NULL product_id (global scope)
                 cur.execute(
-                    "SELECT * FROM processed_papers WHERE content_hash = %s",
+                    "SELECT * FROM processed_papers WHERE content_hash = %s AND product_id IS NULL",
                     (content_hash,)
                 )
             return _row_to_dict(cur.fetchone())
