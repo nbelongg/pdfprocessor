@@ -614,6 +614,38 @@ def process_batch_task(
                     results['total_chunks'] += pdf_result_data.get('chunks', 0)
                     results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
                     results['new_papers_count'] += 1
+                    
+                    # Record successfully processed paper with product_id
+                    from utils.deduplication import generate_content_hash
+                    from utils.metadata_fingerprint import calculate_metadata_fingerprint
+                    
+                    paper_title_col = column_mapping.get('paper_title', '')
+                    paper_title = row[paper_title_col] if paper_title_col and paper_title_col in row and pd.notna(row[paper_title_col]) else ''
+                    
+                    authors_col = column_mapping.get('authors', '')
+                    authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
+                    
+                    content_hash = generate_content_hash(
+                        str(paper_title) if pd.notna(paper_title) else '',
+                        str(authors) if pd.notna(authors) else ''
+                    )
+                    
+                    metadata_fp = calculate_metadata_fingerprint(row_metadata)
+                    
+                    record_or_update_paper(
+                        drive_file_id=file_id,
+                        content_hash=content_hash,
+                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                        authors=str(authors) if pd.notna(authors) else '',
+                        metadata=row_metadata,
+                        pinecone_namespace=namespace,
+                        source_id=source_id,
+                        row_number=row_idx + 2,  # Convert 0-based DataFrame index to 1-based Sheet row
+                        is_duplicate=False,
+                        existing_paper=None,
+                        metadata_fingerprint=metadata_fp,
+                        product_id=product_id
+                    )
                 
                 completed += 1
                 
