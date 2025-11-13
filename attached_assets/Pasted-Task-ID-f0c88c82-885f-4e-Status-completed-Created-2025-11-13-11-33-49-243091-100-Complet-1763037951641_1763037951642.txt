@@ -1,0 +1,336 @@
+Task ID: f0c88c82-885f-4e...
+
+Status: completed
+
+Created: 2025-11-13 11:33:49.243091
+
+100% - Completed! Processed 4 new papers, skipped 53 duplicates
+
+✅ New Papers Processed
+
+4
+⏭️ Duplicates Skipped
+
+53
+📊 View Result
+
+{
+"job_id":"f0c88c82-885f-4e50-ad23-adf667108e7a"
+"details":[
+0:{
+"row":0
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x"
+"filename":""
+"existing_paper":{
+"id":591
+"authors":"United Nations Volunteers (UNV) programme team"
+"metadata":{
+"file_id":"1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:35:42.026474"
+"product_id":7
+"updated_at":"2025-11-13T11:35:42.026474"
+"paper_title":"State of youth volunteering in India"
+"content_hash":"da149ff9780d28be216f8f4fb43ad68e19dfc4cb61ef6be1e3b207aefc1e8608"
+"drive_file_id":"1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x"
+"metadata_json":{
+"file_id":"1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1RCFlAOhX3vjZtT4LZk4uKcvyWpvSXx5x/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:35:42.026474"
+"first_processed_at":"2025-11-13T11:35:42.026474"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+1:{
+"row":1
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0"
+"filename":""
+"existing_paper":{
+"id":592
+"authors":"Jereesh K. Elias, Paulomi Sudhir and Seema Mehrotra "
+"metadata":{
+"file_id":"1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:36:49.653293"
+"product_id":7
+"updated_at":"2025-11-13T11:36:49.653293"
+"paper_title":"Long-Term Engagement in Formal Volunteering and
+Well-Being: An Exploratory Indian Study"
+"content_hash":"566e251805ca382d6e10481984714f9e776bcabe6a0b7d8bd7fd4c4c303e8f92"
+"drive_file_id":"1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0"
+"metadata_json":{
+"file_id":"1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1NRaV2XFyk1-voJHLuerOCR_74F4Jt-k0/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:36:49.653293"
+"first_processed_at":"2025-11-13T11:36:49.653293"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+2:{
+"row":2
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm"
+"filename":""
+"existing_paper":{
+"id":593
+"authors":"Simar Kaur Monga, Dr. Sushmita Biswal Waraich"
+"metadata":{
+"file_id":"16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:37:37.075598"
+"product_id":7
+"updated_at":"2025-11-13T11:37:37.075598"
+"paper_title":"Effect of Self-Efficacy and Emotional Maturity on Prosocial Behaviour of Young Adults"
+"content_hash":"b856a56d2e1966b20dc892de81457f41f26daf6eec92c4b088eb29eb50b04fe3"
+"drive_file_id":"16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm"
+"metadata_json":{
+"file_id":"16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/16j1aGyqxVL6PSWuth3z_hLZMitQjUVCm/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:37:37.075598"
+"first_processed_at":"2025-11-13T11:37:37.075598"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+3:{
+"row":3
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1a01ifClrHT3NhauVEvdOOxlD28mfUXFd"
+"filename":""
+"existing_paper":{
+"id":594
+"authors":"Dharma Raju Bathini and Neharika Vohra"
+"metadata":{
+"file_id":"1a01ifClrHT3NhauVEvdOOxlD28mfUXFd"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1a01ifClrHT3NhauVEvdOOxlD28mfUXFd/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:38:37.176617"
+"product_id":7
+"updated_at":"2025-11-13T11:38:37.176617"
+"paper_title":"Volunteering: The Role of Individual-level Psychological Variables"
+"content_hash":"b9c6e6d501d2da064441e1d08502e4ac77786b750bb2758dc845ab3d58c90c64"
+"drive_file_id":"1a01ifClrHT3NhauVEvdOOxlD28mfUXFd"
+"metadata_json":{
+"file_id":"1a01ifClrHT3NhauVEvdOOxlD28mfUXFd"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1a01ifClrHT3NhauVEvdOOxlD28mfUXFd/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:38:37.176617"
+"first_processed_at":"2025-11-13T11:38:37.176617"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+4:{
+"row":4
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA"
+"filename":""
+"existing_paper":{
+"id":595
+"authors":"Nrityanjali Sarmah"
+"metadata":{
+"file_id":"1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:39:13.969346"
+"product_id":7
+"updated_at":"2025-11-13T11:39:13.969346"
+"paper_title":"Youth Volunteerism: What do Young People want from
+Volunteerism?"
+"content_hash":"780f2aec2af934e7b0701e10cd16d2104d7656154cbd2132fd0f0e97dd73bdb3"
+"drive_file_id":"1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA"
+"metadata_json":{
+"file_id":"1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1c-FtyH_lmLiPk-l-Ku29gJjoy3ffAaBA/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:39:13.969346"
+"first_processed_at":"2025-11-13T11:39:13.969346"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+5:{
+"row":5
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs"
+"filename":""
+"existing_paper":{
+"id":596
+"authors":" NGO (CRY) + Consulting Firm (Grant Thornton Bharat)"
+"metadata":{
+"file_id":"1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:40:19.358259"
+"product_id":7
+"updated_at":"2025-11-13T11:40:19.358259"
+"paper_title":"Volunteering in India: Perspectives, Insights, and Potential for Social Impact
+"
+"content_hash":"74e68a01a35f8bcef0d768f08e7125a6e1a7e4621a930aefa95ea2fcc3d9241d"
+"drive_file_id":"1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs"
+"metadata_json":{
+"file_id":"1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1ux6G93s_qxjJYIZn0V_ayQvsD1BObMvs/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:40:19.358259"
+"first_processed_at":"2025-11-13T11:40:19.358259"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+6:{
+"row":6
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d"
+"filename":""
+"existing_paper":{
+"id":597
+"authors":"S. Haranath"
+"metadata":{
+"file_id":"1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:43:28.608429"
+"product_id":7
+"updated_at":"2025-11-13T11:43:28.608429"
+"paper_title":"Understanding the Reasons for joining in NSS Programme and the Competencies of NSS Volunteers in North Andhra Pradesh : A Study"
+"content_hash":"8d7a36d709084a5df25f49ad7bdf3f183b9a20cada93c1299e86c4ea91ae1ef4"
+"drive_file_id":"1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d"
+"metadata_json":{
+"file_id":"1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1FbAIUA0G2x8_GJrOwPBsAtSQoDyCet7d/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:43:28.608429"
+"first_processed_at":"2025-11-13T11:43:28.608429"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+7:{
+"row":7
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8"
+"filename":""
+"existing_paper":{
+"id":598
+"authors":"Dr. D. Lalitha, Mrs. B SUBASRI"
+"metadata":{
+"file_id":"1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:44:20.009161"
+"product_id":7
+"updated_at":"2025-11-13T11:44:20.009161"
+"paper_title":"Students’ Perception and Involvement in Volunteering Services"
+"content_hash":"5d804c09b9ed512df95eb623265c5240d3fb96775679b314f007c948f17257bc"
+"drive_file_id":"1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8"
+"metadata_json":{
+"file_id":"1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1gE8lXc0u3mu5f3jGZWKClpgL4zEujda8/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:44:20.009161"
+"first_processed_at":"2025-11-13T11:44:20.009161"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+8:{
+"row":8
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX"
+"filename":""
+"existing_paper":{
+"id":599
+"authors":"Gaëlle Perrin, i Volunteer"
+"metadata":{
+"file_id":"1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:44:54.696518"
+"product_id":7
+"updated_at":"2025-11-13T11:44:54.696518"
+"paper_title":"VOLUNTEERING IN INDIA
+A Snapshot of practices, attitudes, and trends."
+"content_hash":"ca129cdfea40aa2fef3d836b35538ff9974342248f78784ab84a3e65cc31da27"
+"drive_file_id":"1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX"
+"metadata_json":{
+"file_id":"1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/1GKzxhv1A5gqDf0UW-cBDot_YTWTONqVX/view?usp=drive_link"
+}
+"processing_count":1
+"last_processed_at":"2025-11-13T11:44:54.696518"
+"first_processed_at":"2025-11-13T11:44:54.696518"
+"pinecone_namespace":"default"
+"metadata_fingerprint":"841fdd4c337117bbc98c346715cbb2b761bd854252a37969204ce528156c31e4"
+}
+}
+9:{
+"row":9
+"reason":"Duplicate detected (layer1_file_id)"
+"status":"skipped"
+"file_id":"16cL--j-C813aKygOl4KFX1coHLsz4msJ"
+"filename":""
+"existing_paper":{
+"id":600
+"authors":" Dr. Chris Millora"
+"metadata":{
+"file_id":"16cL--j-C813aKygOl4KFX1coHLsz4msJ"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/16cL--j-C813aKygOl4KFX1coHLsz4msJ/view?usp=drive_link"
+}
+"created_at":"2025-11-13T11:45:38.242781"
+"product_id":7
+"updated_at":"2025-11-13T11:45:38.242781"
+"paper_title":"The Challenge of Youth Volunteering and WellBeing"
+"content_hash":"14f90dcadc2f4836e18551de9beafbdfb984d73371f84453118e2105daa2e8db"
+"drive_file_id":"16cL--j-C813aKygOl4KFX1coHLsz4msJ"
+"metadata_json":{
+"file_id":"16cL--j-C813aKygOl4KFX1coHLsz4msJ"
+"filename":""
+"drive_link":"https://drive.google.com/file/d/16cL--j-C813aKygOl4KFX1coHLsz4msJ/view?usp=drive_link"
+}
