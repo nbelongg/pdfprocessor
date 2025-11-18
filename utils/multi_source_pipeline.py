@@ -23,7 +23,7 @@ from utils.database import (
     update_document_tags, get_document_tags, is_document_tagged
 )
 from utils.db.tag_configs import get_tag_configurations
-from utils.deduplication import check_all_layers, record_or_update_paper
+from utils.deduplication import should_process_paper, record_processed_paper, generate_content_hash
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.config_builder import build_product_config
 from utils.metadata_fingerprint import calculate_metadata_fingerprint
@@ -191,50 +191,50 @@ def process_multi_source_pipeline(
                 authors_col = column_mappings.get('authors', '')
                 authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
                 
-                dedup_result = None
+                # Check for duplicates BEFORE any processing (unless in preview mode)
                 if not preview_mode:
                     enable_dedup_l1 = product_config.get('dedup_layer1', True)
                     enable_dedup_l2 = product_config.get('dedup_layer2', True)
                     
-                    dedup_result = check_all_layers(
+                    # Use new robust 4-state deduplication check
+                    dedup_result = should_process_paper(
                         drive_file_id=file_id,
                         paper_title=str(paper_title) if pd.notna(paper_title) else '',
                         authors=str(authors) if pd.notna(authors) else '',
-                        embedding=None,
-                        namespace='default',
-                        pinecone_index=None,
+                        product_id=product_id,
                         enable_layer1=enable_dedup_l1,
-                        enable_layer2=enable_dedup_l2,
-                        enable_layer3=False,
-                        product_id=product_id
+                        enable_layer2=enable_dedup_l2
                     )
                     
-                    if dedup_result['is_duplicate']:
+                    # Early exit if duplicate (States 1 or 3)
+                    if not dedup_result['should_process']:
+                        logger.info(
+                            f"⏭️  Skipping paper at Sheet row {sheet_row}\n"
+                            f"   File ID: {file_id}\n"
+                            f"   Reason: {dedup_result['reason']}\n"
+                            f"   State: {dedup_result['state']}\n"
+                            f"   Layer: {dedup_result['duplicate_layer']}"
+                        )
                         results['details'].append({
                             'source': source_info['name'],
                             'row': idx,
                             'sheet_row': sheet_row,
                             'file_id': file_id,
-                            'status': 'skipped_duplicate',
+                            'status': 'skipped',
+                            'reason': dedup_result['reason'],
+                            'state': dedup_result['state'],
                             'duplicate_layer': dedup_result['duplicate_layer'],
-                            'existing_paper': dedup_result['existing_paper']
+                            'existing_paper': dedup_result.get('existing_paper')
                         })
-                        
-                        logger.info(f"📝 Recording duplicate paper at Sheet row {sheet_row} (DataFrame index {idx})")
-                        record_or_update_paper(
-                            drive_file_id=file_id,
-                            content_hash=dedup_result['content_hash'],
-                            paper_title=str(paper_title) if pd.notna(paper_title) else '',
-                            authors=str(authors) if pd.notna(authors) else '',
-                            metadata={},
-                            pinecone_namespace='default',
-                            source_id=source_id,
-                            row_number=sheet_row,  # Use actual Google Sheets row number
-                            is_duplicate=True,
-                            existing_paper=dedup_result['existing_paper'],
-                            product_id=product_id
-                        )
                         continue
+                    
+                    # Log processing state (States 2 or 4)
+                    logger.info(
+                        f"📄 Processing paper at Sheet row {sheet_row}\n"
+                        f"   File ID: {file_id}\n"
+                        f"   Reason: {dedup_result['reason']}\n"
+                        f"   State: {dedup_result['state']}"
+                    )
                 
                 if progress_callback:
                     progress_callback(
@@ -425,34 +425,39 @@ def process_multi_source_pipeline(
                         namespace
                     )
                     
-                    mark_chunks_uploaded(job_id, file_id)
-                    results['vectors_stored'] += uploaded_count
-                    
-                    from utils.deduplication import generate_content_hash
-                    content_hash = generate_content_hash(
-                        str(paper_title) if pd.notna(paper_title) else '',
-                        str(authors) if pd.notna(authors) else ''
-                    )
-                    
-                    # Calculate metadata fingerprint for future change detection
-                    metadata_fp = calculate_metadata_fingerprint(row_metadata)
-                    logger.debug(f"📋 Calculated metadata fingerprint: {metadata_fp[:16]}...")
-                    
-                    logger.info(f"📝 Recording successfully processed paper at Sheet row {sheet_row} (DataFrame index {idx})")
-                    record_or_update_paper(
-                        drive_file_id=file_id,
-                        content_hash=content_hash,
-                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
-                        authors=str(authors) if pd.notna(authors) else '',
-                        metadata=row_metadata,
-                        pinecone_namespace=namespace,
-                        source_id=source_id,
-                        row_number=sheet_row,  # Use actual Google Sheets row number
-                        is_duplicate=False,
-                        existing_paper=None,
-                        metadata_fingerprint=metadata_fp,
-                        product_id=product_id
-                    )
+                    # ONLY mark chunks as uploaded after confirming Pinecone upload succeeded
+                    if uploaded_count > 0:
+                        mark_chunks_uploaded(job_id, file_id)
+                        results['vectors_stored'] += uploaded_count
+                        
+                        # Record successfully processed paper in processed_papers table
+                        # This happens AFTER Pinecone upload to ensure database accuracy
+                        content_hash = generate_content_hash(
+                            str(paper_title) if pd.notna(paper_title) else '',
+                            str(authors) if pd.notna(authors) else ''
+                        )
+                        
+                        # Calculate metadata fingerprint for future change detection
+                        metadata_fp = calculate_metadata_fingerprint(row_metadata)
+                        logger.debug(f"📋 Calculated metadata fingerprint: {metadata_fp[:16]}...")
+                        
+                        logger.info(f"📝 Recording successfully processed paper at Sheet row {sheet_row} (DataFrame index {idx})")
+                        
+                        try:
+                            record_processed_paper(
+                                drive_file_id=file_id,
+                                content_hash=content_hash,
+                                paper_title=str(paper_title) if pd.notna(paper_title) else '',
+                                authors=str(authors) if pd.notna(authors) else '',
+                                metadata=row_metadata,
+                                pinecone_namespace=namespace,
+                                metadata_fingerprint=metadata_fp,
+                                product_id=product_id
+                            )
+                        except Exception as e:
+                            logger.error(f"⚠️  Failed to record processed paper: {e} (continuing anyway)")
+                    else:
+                        logger.warning(f"⚠️  Pinecone upload returned 0 vectors - NOT marking as uploaded")
                 
                 results['total_pdfs'] += 1
                 results['total_chunks'] += len(nodes)
