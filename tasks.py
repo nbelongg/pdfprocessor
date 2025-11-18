@@ -604,6 +604,7 @@ def process_batch_task(
                         paper_title=str(paper_title) if pd.notna(paper_title) else '',
                         authors=str(authors) if pd.notna(authors) else '',
                         product_id=product_id,
+                        namespace=namespace,  # Product-scoped chunk check
                         enable_layer1=enable_dedup_l1,
                         enable_layer2=enable_dedup_l2
                     )

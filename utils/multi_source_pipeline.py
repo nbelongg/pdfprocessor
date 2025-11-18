@@ -196,12 +196,21 @@ def process_multi_source_pipeline(
                     enable_dedup_l1 = product_config.get('dedup_layer1', True)
                     enable_dedup_l2 = product_config.get('dedup_layer2', True)
                     
+                    # Determine namespace before dedup check
+                    dedup_namespace = default_namespace
+                    namespace_col = column_mappings.get('namespace')
+                    if namespace_col and namespace_col in row:
+                        namespace_value = row[namespace_col]
+                        if pd.notna(namespace_value) and str(namespace_value).strip():
+                            dedup_namespace = str(namespace_value).strip()
+                    
                     # Use new robust 4-state deduplication check
                     dedup_result = should_process_paper(
                         drive_file_id=file_id,
                         paper_title=str(paper_title) if pd.notna(paper_title) else '',
                         authors=str(authors) if pd.notna(authors) else '',
                         product_id=product_id,
+                        namespace=dedup_namespace,  # Product-scoped chunk check
                         enable_layer1=enable_dedup_l1,
                         enable_layer2=enable_dedup_l2
                     )

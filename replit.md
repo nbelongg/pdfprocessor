@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Key Features
 -   **Multi-Source Data Management**: Process PDFs from various Google Sheet sources.
--   **Product-Scoped Deduplication**: Three-layer system (Drive file ID, content hash, optional embedding similarity) with product isolation. Same paper can be processed into multiple products with different embedding dimensions while preventing duplicates within each product. Uses dual partial unique indexes for clean separation between global (NULL product_id) and product-specific entries.
+-   **Robust Deduplication System**: Two-layer system (Drive file ID, content hash) with 4-state self-healing logic and product isolation. Same paper can be processed into multiple products with different embedding dimensions while preventing duplicates within each product. System automatically recovers from timeouts and database-Pinecone inconsistencies.
 -   **Admin Maintenance Tools**: Production-accessible pages for backfilling deduplication records and enriching metadata.
 -   **Metadata-Only Updates**: Efficiently update metadata without re-parsing PDFs or regenerating embeddings, using metadata fingerprints for change detection.
 -   **Hash-Based Paper Detection**: Position-independent detection of new papers in Google Sheets using Drive File ID or content hash.
@@ -58,13 +58,29 @@ Preferred communication style: Simple, everyday language.
 -   **Modularization**: Database operations are organized into domain-specific modules (`products.py`, `jobs.py`, `documents.py`, etc.) within `utils/db/`.
 
 ### Product Management & Multi-Tenant Support
--   **Isolation**: Separate Pinecone indexes, API keys, and credentials per product.
+-   **Isolation**: Separate Pinecone indexes, namespaces, API keys, and credentials per product.
 -   **Configuration**: Each product stores its specific processing settings (parsing modes, result types, parallel workers, error tolerance) and secret names (referencing Replit secrets).
 -   **Centralized Config Builder**: `utils/config_builder.py` provides a single source of truth for building product configurations from the database.
 -   **Product-Scoped Deduplication**: The `processed_papers` table uses dual partial unique indexes to allow the same paper (Drive File ID) to be processed into multiple products while preventing duplicates within each product:
     -   `processed_papers_drive_file_id_null_idx`: UNIQUE (drive_file_id) WHERE product_id IS NULL (legacy/global scope)
     -   `processed_papers_drive_file_id_product_id_idx`: UNIQUE (drive_file_id, product_id) WHERE product_id IS NOT NULL (product-scoped)
-    -   Example: Paper XYZ can be processed into Product 1 (1536-dim embeddings) and Product 7 (384-dim embeddings) simultaneously, with deduplication enforced separately for each product.
+    -   Example: Paper XYZ can be processed into Product 1 (1536-dim embeddings, namespace: product-1) and Product 7 (384-dim embeddings, namespace: product-7) simultaneously, with deduplication enforced separately for each product.
+
+### Robust Deduplication System (November 2025)
+-   **Design Principle**: "Check First, Process Never" - Duplicates are detected BEFORE any expensive processing (parsing, chunking, embedding).
+-   **Two-Layer Detection**:
+    -   **Layer 1 (Primary)**: Drive File ID lookup in `processed_papers` table (fast, product-scoped)
+    -   **Layer 2 (Fallback)**: Content hash comparison (title + authors) for same paper with different Drive links
+    -   **Removed**: Layer 3 embedding similarity (too slow, complex, not needed)
+-   **4-State Self-Healing Logic**:
+    -   **State 1**: In `processed_papers` + has uploaded chunks → **SKIP** (already complete)
+    -   **State 2**: In `processed_papers` but NO uploaded chunks → **REPROCESS** (previous upload failed, clean up first)
+    -   **State 3**: NOT in `processed_papers` but HAS uploaded chunks → **SKIP + backfill** (timeout recovery)
+    -   **State 4**: NOT in `processed_papers` and NO uploaded chunks → **PROCESS** (truly new)
+-   **Atomic Pinecone Upload Tracking**: Papers are ONLY marked in `processed_papers` AFTER confirming successful Pinecone upload (vectors_uploaded > 0).
+-   **Product Scoping**: Chunk existence checks filter by both `drive_file_id` AND `namespace` to prevent cross-product false positives.
+-   **Self-Healing**: System automatically backfills missing records (State 3) and cleans up incomplete records (State 2) to maintain database-Pinecone synchronization.
+-   **Transparent Logging**: All duplicate decisions include state, reason, and layer for debugging and monitoring.
 
 ## External Dependencies
 

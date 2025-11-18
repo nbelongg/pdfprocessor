@@ -86,12 +86,16 @@ def check_in_processed_papers(drive_file_id: str, product_id: Optional[int] = No
         conn.close()
 
 
-def check_has_uploaded_chunks(drive_file_id: str) -> bool:
+def check_has_uploaded_chunks(drive_file_id: str, namespace: Optional[str] = None) -> bool:
     """
     Check if paper has uploaded chunks in processing_chunks table.
     
+    For product-scoped deduplication, this checks by file_id AND namespace
+    to prevent cross-product false positives.
+    
     Args:
         drive_file_id: Google Drive file ID
+        namespace: Optional Pinecone namespace (product-specific)
         
     Returns:
         True if uploaded chunks exist, False otherwise
@@ -100,12 +104,25 @@ def check_has_uploaded_chunks(drive_file_id: str) -> bool:
     cur = conn.cursor()
     
     try:
-        query = """
-            SELECT COUNT(*) as count
-            FROM processing_chunks
-            WHERE file_id = %s AND embedding_stored = TRUE
-        """
-        cur.execute(query, (drive_file_id,))
+        if namespace:
+            # Product-scoped check: file_id AND namespace
+            query = """
+                SELECT COUNT(*) as count
+                FROM processing_chunks
+                WHERE file_id = %s 
+                  AND namespace = %s 
+                  AND embedding_stored = TRUE
+            """
+            cur.execute(query, (drive_file_id, namespace))
+        else:
+            # Legacy global check: file_id only
+            query = """
+                SELECT COUNT(*) as count
+                FROM processing_chunks
+                WHERE file_id = %s AND embedding_stored = TRUE
+            """
+            cur.execute(query, (drive_file_id,))
+        
         result = cur.fetchone()
         return result[0] > 0 if result else False
         
@@ -114,7 +131,11 @@ def check_has_uploaded_chunks(drive_file_id: str) -> bool:
         conn.close()
 
 
-def backfill_processed_paper(drive_file_id: str, product_id: Optional[int] = None):
+def backfill_processed_paper(
+    drive_file_id: str, 
+    product_id: Optional[int] = None,
+    namespace: str = 'default'
+):
     """
     Backfill a missing processed_papers record (State 3: timeout recovery).
     
@@ -123,16 +144,43 @@ def backfill_processed_paper(drive_file_id: str, product_id: Optional[int] = Non
     - Job timed out before marking in processed_papers
     - Next run detects uploaded chunks but no processed_papers record
     
+    Tries to hydrate metadata from existing chunks to create accurate record.
+    
     Args:
         drive_file_id: Google Drive file ID
         product_id: Optional product ID
+        namespace: Pinecone namespace (defaults to 'default')
     """
     conn = get_db_connection()
     cur = conn.cursor()
     
     try:
-        # Create minimal record to mark as processed
-        # We don't have all metadata, but we know it was processed
+        # Try to get metadata from existing chunks
+        cur.execute("""
+            SELECT metadata, namespace
+            FROM processing_chunks
+            WHERE file_id = %s AND namespace = %s AND embedding_stored = TRUE
+            LIMIT 1
+        """, (drive_file_id, namespace))
+        
+        chunk_row = cur.fetchone()
+        
+        if chunk_row and chunk_row[0]:
+            # Hydrate from chunk metadata
+            chunk_metadata = chunk_row[0]
+            actual_namespace = chunk_row[1] or namespace
+            paper_title = chunk_metadata.get('paper_title', chunk_metadata.get('title', 'Backfilled record'))
+            authors = chunk_metadata.get('authors', '')
+            content_hash = generate_content_hash(paper_title, authors)
+        else:
+            # Minimal fallback
+            paper_title = 'Backfilled record'
+            authors = ''
+            content_hash = ''
+            actual_namespace = namespace
+            chunk_metadata = {}
+        
+        # Create backfilled record with best available metadata
         query = """
             INSERT INTO processed_papers
             (drive_file_id, content_hash, paper_title, authors, metadata, 
@@ -143,17 +191,22 @@ def backfill_processed_paper(drive_file_id: str, product_id: Optional[int] = Non
         
         cur.execute(query, (
             drive_file_id,
-            '',  # No content hash available
-            'Backfilled record',
-            '',
-            {},
-            'default',
+            content_hash,
+            paper_title,
+            authors,
+            chunk_metadata,
+            actual_namespace,
             product_id,
-            {}
+            chunk_metadata
         ))
         
         conn.commit()
-        logger.info(f"✅ Backfilled processed_papers record for {drive_file_id} (product_id={product_id})")
+        logger.info(
+            f"✅ Backfilled processed_papers record for {drive_file_id}\n"
+            f"   Product ID: {product_id}\n"
+            f"   Namespace: {actual_namespace}\n"
+            f"   Title: {paper_title}"
+        )
         
     except Exception as e:
         conn.rollback()
@@ -255,6 +308,7 @@ def should_process_paper(
     paper_title: str,
     authors: str,
     product_id: Optional[int] = None,
+    namespace: str = 'default',
     enable_layer1: bool = True,
     enable_layer2: bool = True
 ) -> Dict:
@@ -272,6 +326,7 @@ def should_process_paper(
         paper_title: Paper title
         authors: Paper authors
         product_id: Optional product ID for product-scoped deduplication
+        namespace: Pinecone namespace (product-specific, defaults to 'default')
         enable_layer1: Enable Drive File ID check
         enable_layer2: Enable content hash check
         
@@ -287,10 +342,10 @@ def should_process_paper(
     """
     content_hash = generate_content_hash(paper_title, authors)
     
-    # Layer 1: Check by Drive File ID
+    # Layer 1: Check by Drive File ID (with product-scoped chunk check)
     if enable_layer1:
         in_processed = check_in_processed_papers(drive_file_id, product_id)
-        has_chunks = check_has_uploaded_chunks(drive_file_id)
+        has_chunks = check_has_uploaded_chunks(drive_file_id, namespace)
         
         # State 1: Complete (in DB + has chunks)
         if in_processed and has_chunks:
@@ -323,9 +378,9 @@ def should_process_paper(
         if not in_processed and has_chunks:
             logger.info(
                 f"✅ Paper {drive_file_id} has uploaded chunks but not in processed_papers. "
-                f"Backfilling record..."
+                f"Backfilling record (namespace={namespace})..."
             )
-            backfill_processed_paper(drive_file_id, product_id)
+            backfill_processed_paper(drive_file_id, product_id, namespace)
             return {
                 'should_process': False,
                 'reason': 'Already uploaded (backfilled record)',
