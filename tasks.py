@@ -40,7 +40,7 @@ from utils.database import (
 from utils.tagger import generate_tags_with_openai, validate_tags
 from utils.exceptions import TransientError
 from utils.config_builder import build_product_config
-from utils.deduplication import check_all_layers, record_or_update_paper
+from utils.deduplication import should_process_paper, record_processed_paper, generate_content_hash
 from utils.monitoring import (
     track_api_cost, calculate_llamaparse_cost, calculate_openai_embedding_cost,
     estimate_tokens_from_text, update_job_runtime, save_to_failed_queue
@@ -161,7 +161,8 @@ def _process_single_pdf_logic(
     config: Dict[str, Any],
     job_id: str,
     namespace: str = 'default',
-    progress_callback: Optional[Callable[[int, int, str], None]] = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    product_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Core PDF processing logic (extracted for reuse).
@@ -342,7 +343,36 @@ def _process_single_pdf_logic(
             })
         
         save_chunks(job_id, file_id, filename, chunks_data)
-        mark_chunks_uploaded(job_id, file_id)
+        
+        # ONLY mark chunks as uploaded after confirming Pinecone upload succeeded
+        if vectors_uploaded > 0:
+            mark_chunks_uploaded(job_id, file_id)
+            
+            # Record successfully processed paper in processed_papers table
+            # This happens AFTER Pinecone upload to ensure database accuracy
+            from utils.metadata_fingerprint import calculate_metadata_fingerprint
+            
+            paper_title = row_metadata.get('paper_title', row_metadata.get('title', ''))
+            authors = row_metadata.get('authors', '')
+            content_hash = generate_content_hash(paper_title, authors)
+            metadata_fp = calculate_metadata_fingerprint(row_metadata)
+            
+            try:
+                record_processed_paper(
+                    drive_file_id=file_id,
+                    content_hash=content_hash,
+                    paper_title=paper_title,
+                    authors=authors,
+                    metadata=row_metadata,
+                    pinecone_namespace=namespace,
+                    metadata_fingerprint=metadata_fp,
+                    product_id=product_id
+                )
+                logger.info(f"✅ Recorded processed paper: {file_id} (product_id={product_id})")
+            except Exception as e:
+                logger.error(f"⚠️  Failed to record processed paper: {e} (continuing anyway)")
+        else:
+            logger.warning(f"⚠️  Pinecone upload returned 0 vectors - NOT marking as uploaded")
         
         if progress_callback:
             progress_callback(PROGRESS_COMPLETE, 100, f"Completed {filename}")
@@ -560,7 +590,7 @@ def process_batch_task(
                 
                 filename = row_metadata.get('filename', f'file_{file_id}.pdf')
                 
-                # Check for duplicates before processing (unless in preview mode)
+                # Check for duplicates BEFORE any processing (unless in preview mode)
                 if not preview_mode:
                     paper_title_col = column_mapping.get('paper_title', '')
                     paper_title = row[paper_title_col] if paper_title_col and paper_title_col in row and pd.notna(row[paper_title_col]) else ''
@@ -568,32 +598,44 @@ def process_batch_task(
                     authors_col = column_mapping.get('authors', '')
                     authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
                     
-                    dedup_result = check_all_layers(
+                    # Use new robust 4-state deduplication check
+                    dedup_result = should_process_paper(
                         drive_file_id=file_id,
                         paper_title=str(paper_title) if pd.notna(paper_title) else '',
                         authors=str(authors) if pd.notna(authors) else '',
-                        embedding=None,
-                        namespace=namespace,
-                        pinecone_index=None,
+                        product_id=product_id,
                         enable_layer1=enable_dedup_l1,
-                        enable_layer2=enable_dedup_l2,
-                        enable_layer3=False,
-                        product_id=product_id
+                        enable_layer2=enable_dedup_l2
                     )
                     
-                    if dedup_result['is_duplicate']:
-                        logger.info(f"Skipping duplicate paper: {filename} (Layer: {dedup_result['duplicate_layer']})")
+                    # Early exit if duplicate (States 1 or 3)
+                    if not dedup_result['should_process']:
+                        logger.info(
+                            f"⏭️  Skipping paper: {filename}\n"
+                            f"   Reason: {dedup_result['reason']}\n"
+                            f"   State: {dedup_result['state']}\n"
+                            f"   Layer: {dedup_result['duplicate_layer']}"
+                        )
                         results['details'].append({
                             'row': row_idx,
                             'file_id': file_id,
                             'filename': filename,
                             'status': 'skipped',
-                            'reason': f"Duplicate detected ({dedup_result['duplicate_layer']})",
+                            'reason': dedup_result['reason'],
+                            'state': dedup_result['state'],
+                            'duplicate_layer': dedup_result['duplicate_layer'],
                             'existing_paper': dedup_result.get('existing_paper')
                         })
                         results['skipped_papers_count'] += 1
                         completed += 1
                         continue
+                    
+                    # Log processing state (States 2 or 4)
+                    logger.info(
+                        f"📄 Processing paper: {filename}\n"
+                        f"   Reason: {dedup_result['reason']}\n"
+                        f"   State: {dedup_result['state']}"
+                    )
                 
                 # Process PDF inline (no subtask spawning)
                 logger.info(f"Processing {idx + 1}/{total_tasks}: {filename}")
@@ -604,7 +646,8 @@ def process_batch_task(
                     config=product_config,
                     job_id=job_id,
                     namespace=namespace,
-                    progress_callback=None  # Don't update progress for each file step
+                    progress_callback=None,  # Don't update progress for each file step
+                    product_id=product_id  # Pass product_id for deduplication tracking
                 )
                 
                 results['details'].append(pdf_result_data)
@@ -615,37 +658,10 @@ def process_batch_task(
                     results['vectors_stored'] += pdf_result_data.get('vectors_uploaded', 0)
                     results['new_papers_count'] += 1
                     
-                    # Record successfully processed paper with product_id
-                    from utils.deduplication import generate_content_hash
-                    from utils.metadata_fingerprint import calculate_metadata_fingerprint
-                    
-                    paper_title_col = column_mapping.get('paper_title', '')
-                    paper_title = row[paper_title_col] if paper_title_col and paper_title_col in row and pd.notna(row[paper_title_col]) else ''
-                    
-                    authors_col = column_mapping.get('authors', '')
-                    authors = row[authors_col] if authors_col and authors_col in row and pd.notna(row[authors_col]) else ''
-                    
-                    content_hash = generate_content_hash(
-                        str(paper_title) if pd.notna(paper_title) else '',
-                        str(authors) if pd.notna(authors) else ''
-                    )
-                    
-                    metadata_fp = calculate_metadata_fingerprint(row_metadata)
-                    
-                    record_or_update_paper(
-                        drive_file_id=file_id,
-                        content_hash=content_hash,
-                        paper_title=str(paper_title) if pd.notna(paper_title) else '',
-                        authors=str(authors) if pd.notna(authors) else '',
-                        metadata=row_metadata,
-                        pinecone_namespace=namespace,
-                        source_id=source_id,
-                        row_number=row_idx + 2,  # Convert 0-based DataFrame index to 1-based Sheet row
-                        is_duplicate=False,
-                        existing_paper=None,
-                        metadata_fingerprint=metadata_fp,
-                        product_id=product_id
-                    )
+                    # Record successfully processed paper ONLY after successful upload
+                    # NOTE: This is already done in _process_single_pdf_logic after Pinecone upload
+                    # No need to record again here
+                    logger.info(f"✅ Successfully processed {filename}: {pdf_result_data.get('chunks', 0)} chunks")
                 
                 completed += 1
                 
