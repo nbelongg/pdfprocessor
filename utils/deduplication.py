@@ -1,202 +1,378 @@
 """
-Three-layer deduplication system for PDF processing.
+Robust deduplication system for PDF processing pipeline.
 
-This module implements a multi-tiered approach to prevent duplicate processing:
-- Layer 1: Google Drive file ID lookup (fastest)
-- Layer 2: Content hash comparison (title + authors)
-- Layer 3: Embedding similarity search (most thorough)
+This module implements a two-layer deduplication approach with self-healing capabilities:
+- Layer 1: Drive File ID check in processed_papers table (fast, primary)
+- Layer 2: Content hash comparison (title + authors fallback)
 
-Usage:
-    from utils.deduplication import check_all_layers
-    
-    is_duplicate, existing_data = check_all_layers(
-        drive_file_id='abc123',
-        paper_title='Sample Paper',
-        authors='John Doe',
-        embedding=[0.1, 0.2, ...],
-        namespace='research',
-        pinecone_index=index
-    )
+The system uses a 4-state check to handle edge cases and timeouts:
+1. In processed_papers + has uploaded chunks → SKIP (complete)
+2. In processed_papers but NO uploaded chunks → REPROCESS (previous failure)
+3. NOT in processed_papers but HAS uploaded chunks → SKIP + backfill (timeout recovery)
+4. NOT in processed_papers and NO uploaded chunks → PROCESS (new paper)
+
+This approach ensures:
+- Duplicates are detected BEFORE expensive processing
+- System self-heals from timeouts and inconsistent states
+- Database and Pinecone stay synchronized
 """
 
 import hashlib
 import logging
-from typing import Dict, List, Optional, Tuple
-from utils.database import (
-    check_paper_processed,
-    check_paper_by_content_hash,
-    record_processed_paper,
-    update_processed_paper
-)
+from typing import Dict, Optional, Tuple
+from utils.db.connection import get_db_connection
+import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
+
 def generate_content_hash(paper_title: str, authors: str) -> str:
-    """Generate a content hash from paper title and authors."""
+    """
+    Generate a content hash from paper title and authors.
+    
+    Args:
+        paper_title: Paper title
+        authors: Paper authors
+        
+    Returns:
+        SHA256 hash of normalized title and authors
+    """
     normalized_title = paper_title.lower().strip() if paper_title else ""
     normalized_authors = authors.lower().strip() if authors else ""
     
     content = f"{normalized_title}|{normalized_authors}"
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-def check_duplicate_layer1(drive_file_id: str, product_id: int = None) -> Tuple[bool, Optional[Dict]]:
+
+def check_in_processed_papers(drive_file_id: str, product_id: Optional[int] = None) -> Optional[Dict]:
     """
-    Layer 1: Check if paper already processed by Drive file ID.
+    Check if paper exists in processed_papers table.
     
     Args:
         drive_file_id: Google Drive file ID
-        product_id: Optional product ID for product-scoped deduplication
+        product_id: Optional product ID for product-scoped check
         
     Returns:
-        (is_duplicate, existing_paper_data)
+        Paper data dict if found, None otherwise
     """
-    existing = check_paper_processed(drive_file_id, product_id)
-    if existing:
-        return True, existing
-    return False, None
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    try:
+        if product_id is not None:
+            query = """
+                SELECT id, drive_file_id, paper_title, authors, created_at, product_id
+                FROM processed_papers
+                WHERE drive_file_id = %s AND product_id = %s
+                LIMIT 1
+            """
+            cur.execute(query, (drive_file_id, product_id))
+        else:
+            query = """
+                SELECT id, drive_file_id, paper_title, authors, created_at, product_id
+                FROM processed_papers
+                WHERE drive_file_id = %s AND product_id IS NULL
+                LIMIT 1
+            """
+            cur.execute(query, (drive_file_id,))
+        
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return None
+        
+    finally:
+        cur.close()
+        conn.close()
 
-def check_duplicate_layer2(paper_title: str, authors: str, product_id: int = None) -> Tuple[bool, Optional[Dict]]:
+
+def check_has_uploaded_chunks(drive_file_id: str) -> bool:
     """
-    Layer 2: Check if paper already processed by content hash (title + authors).
+    Check if paper has uploaded chunks in processing_chunks table.
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        
+    Returns:
+        True if uploaded chunks exist, False otherwise
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        query = """
+            SELECT COUNT(*) as count
+            FROM processing_chunks
+            WHERE file_id = %s AND embedding_stored = TRUE
+        """
+        cur.execute(query, (drive_file_id,))
+        result = cur.fetchone()
+        return result[0] > 0 if result else False
+        
+    finally:
+        cur.close()
+        conn.close()
+
+
+def backfill_processed_paper(drive_file_id: str, product_id: Optional[int] = None):
+    """
+    Backfill a missing processed_papers record (State 3: timeout recovery).
+    
+    This happens when:
+    - Upload to Pinecone succeeded
+    - Job timed out before marking in processed_papers
+    - Next run detects uploaded chunks but no processed_papers record
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        product_id: Optional product ID
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # Create minimal record to mark as processed
+        # We don't have all metadata, but we know it was processed
+        query = """
+            INSERT INTO processed_papers
+            (drive_file_id, content_hash, paper_title, authors, metadata, 
+             pinecone_namespace, product_id, metadata_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (drive_file_id, product_id) DO NOTHING
+        """
+        
+        cur.execute(query, (
+            drive_file_id,
+            '',  # No content hash available
+            'Backfilled record',
+            '',
+            {},
+            'default',
+            product_id,
+            {}
+        ))
+        
+        conn.commit()
+        logger.info(f"✅ Backfilled processed_papers record for {drive_file_id} (product_id={product_id})")
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"❌ Failed to backfill processed_papers: {e}")
+        
+    finally:
+        cur.close()
+        conn.close()
+
+
+def remove_from_processed_papers(drive_file_id: str, product_id: Optional[int] = None):
+    """
+    Remove a paper from processed_papers (State 2: cleanup before reprocessing).
+    
+    This happens when:
+    - Paper is in processed_papers
+    - But has no uploaded chunks (upload failed or chunks were deleted)
+    - Need to clean up before reprocessing
+    
+    Args:
+        drive_file_id: Google Drive file ID
+        product_id: Optional product ID
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        if product_id is not None:
+            query = "DELETE FROM processed_papers WHERE drive_file_id = %s AND product_id = %s"
+            cur.execute(query, (drive_file_id, product_id))
+        else:
+            query = "DELETE FROM processed_papers WHERE drive_file_id = %s AND product_id IS NULL"
+            cur.execute(query, (drive_file_id,))
+        
+        conn.commit()
+        logger.info(f"🗑️  Removed incomplete record from processed_papers: {drive_file_id} (product_id={product_id})")
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"❌ Failed to remove from processed_papers: {e}")
+        
+    finally:
+        cur.close()
+        conn.close()
+
+
+def check_by_content_hash(paper_title: str, authors: str, product_id: Optional[int] = None) -> Optional[Dict]:
+    """
+    Check if paper exists by content hash (Layer 2 fallback).
+    
+    This catches cases where the Drive link changed but it's the same paper.
     
     Args:
         paper_title: Paper title
-        authors: Paper authors  
-        product_id: Optional product ID for product-scoped deduplication
+        authors: Paper authors
+        product_id: Optional product ID
         
     Returns:
-        (is_duplicate, existing_paper_data)
+        Paper data dict if found, None otherwise
     """
     if not paper_title and not authors:
-        return False, None
+        return None
     
     content_hash = generate_content_hash(paper_title, authors)
-    existing = check_paper_by_content_hash(content_hash, product_id)
-    if existing:
-        return True, existing
-    return False, None
-
-def check_duplicate_layer3(embedding: List[float], namespace: str, pinecone_index, similarity_threshold: float = 0.95) -> Tuple[bool, Optional[Dict]]:
-    """
-    Layer 3: Check if paper already processed by embedding similarity.
-    Returns: (is_duplicate, similar_paper_metadata)
-    """
+    
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
     try:
-        if not pinecone_index:
-            return False, None
+        if product_id is not None:
+            query = """
+                SELECT id, drive_file_id, paper_title, authors, created_at, product_id
+                FROM processed_papers
+                WHERE content_hash = %s AND product_id = %s
+                LIMIT 1
+            """
+            cur.execute(query, (content_hash, product_id))
+        else:
+            query = """
+                SELECT id, drive_file_id, paper_title, authors, created_at, product_id
+                FROM processed_papers
+                WHERE content_hash = %s AND product_id IS NULL
+                LIMIT 1
+            """
+            cur.execute(query, (content_hash,))
         
-        results = pinecone_index.query(
-            vector=embedding,
-            namespace=namespace,
-            top_k=1,
-            include_metadata=True
-        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return None
         
-        if results.matches and len(results.matches) > 0:
-            top_match = results.matches[0]
-            if top_match.score >= similarity_threshold:
-                return True, {
-                    'score': top_match.score,
-                    'metadata': top_match.metadata
-                }
-        
-        return False, None
-    except Exception as e:
-        logger.warning(f"Layer 3 similarity check failed: {e}")
-        return False, None
+    finally:
+        cur.close()
+        conn.close()
 
-def check_all_layers(
+
+def should_process_paper(
     drive_file_id: str,
     paper_title: str,
     authors: str,
-    embedding: Optional[List[float]] = None,
-    namespace: str = "default",
-    pinecone_index = None,
+    product_id: Optional[int] = None,
     enable_layer1: bool = True,
-    enable_layer2: bool = True,
-    enable_layer3: bool = False,
-    similarity_threshold: float = 0.95,
-    product_id: int = None
+    enable_layer2: bool = True
 ) -> Dict:
     """
-    Check all enabled deduplication layers with optional product-scoped checking.
+    Determine if a paper should be processed using 4-state robust check.
+    
+    States:
+    1. In processed_papers + has uploaded chunks → SKIP (already complete)
+    2. In processed_papers but NO uploaded chunks → REPROCESS (previous failure, clean up first)
+    3. NOT in processed_papers but HAS uploaded chunks → SKIP + backfill (timeout recovery)
+    4. NOT in processed_papers and NO uploaded chunks → PROCESS (truly new)
     
     Args:
         drive_file_id: Google Drive file ID
         paper_title: Paper title
         authors: Paper authors
-        embedding: Optional embedding vector for Layer 3
-        namespace: Pinecone namespace
-        pinecone_index: Pinecone index instance
+        product_id: Optional product ID for product-scoped deduplication
         enable_layer1: Enable Drive File ID check
         enable_layer2: Enable content hash check
-        enable_layer3: Enable embedding similarity check
-        similarity_threshold: Threshold for Layer 3 similarity (default 0.95)
-        product_id: Optional product ID for product-scoped deduplication
         
     Returns:
         {
-            'is_duplicate': bool,
-            'duplicate_layer': str (None, 'layer1', 'layer2', or 'layer3'),
-            'existing_paper': Dict or None,
+            'should_process': bool,
+            'reason': str,
+            'state': str ('state1'|'state2'|'state3'|'state4'),
+            'duplicate_layer': str or None,
+            'existing_paper': dict or None,
             'content_hash': str
         }
     """
     content_hash = generate_content_hash(paper_title, authors)
     
+    # Layer 1: Check by Drive File ID
     if enable_layer1:
-        is_dup, existing = check_duplicate_layer1(drive_file_id, product_id)
-        if is_dup:
+        in_processed = check_in_processed_papers(drive_file_id, product_id)
+        has_chunks = check_has_uploaded_chunks(drive_file_id)
+        
+        # State 1: Complete (in DB + has chunks)
+        if in_processed and has_chunks:
             return {
-                'is_duplicate': True,
+                'should_process': False,
+                'reason': 'Already processed and uploaded',
+                'state': 'state1',
                 'duplicate_layer': 'layer1_file_id',
-                'existing_paper': existing,
+                'existing_paper': in_processed,
+                'content_hash': content_hash
+            }
+        
+        # State 2: Incomplete (in DB but no chunks - previous failure)
+        if in_processed and not has_chunks:
+            logger.warning(
+                f"⚠️  Paper {drive_file_id} in processed_papers but no uploaded chunks. "
+                f"Cleaning up and reprocessing..."
+            )
+            remove_from_processed_papers(drive_file_id, product_id)
+            return {
+                'should_process': True,
+                'reason': 'Reprocessing (previous upload failed)',
+                'state': 'state2',
+                'duplicate_layer': None,
+                'existing_paper': None,
+                'content_hash': content_hash
+            }
+        
+        # State 3: Timeout recovery (not in DB but has chunks)
+        if not in_processed and has_chunks:
+            logger.info(
+                f"✅ Paper {drive_file_id} has uploaded chunks but not in processed_papers. "
+                f"Backfilling record..."
+            )
+            backfill_processed_paper(drive_file_id, product_id)
+            return {
+                'should_process': False,
+                'reason': 'Already uploaded (backfilled record)',
+                'state': 'state3',
+                'duplicate_layer': 'layer1_file_id_backfilled',
+                'existing_paper': {'drive_file_id': drive_file_id, 'product_id': product_id},
                 'content_hash': content_hash
             }
     
+    # Layer 2: Check by content hash (fallback for same paper, different Drive link)
     if enable_layer2:
-        is_dup, existing = check_duplicate_layer2(paper_title, authors, product_id)
-        if is_dup:
+        existing = check_by_content_hash(paper_title, authors, product_id)
+        if existing:
             return {
-                'is_duplicate': True,
+                'should_process': False,
+                'reason': f"Duplicate content (same title/authors, different Drive link)",
+                'state': 'state1',
                 'duplicate_layer': 'layer2_content_hash',
                 'existing_paper': existing,
                 'content_hash': content_hash
             }
     
-    if enable_layer3 and embedding and pinecone_index:
-        is_dup, similar = check_duplicate_layer3(embedding, namespace, pinecone_index, similarity_threshold)
-        if is_dup:
-            return {
-                'is_duplicate': True,
-                'duplicate_layer': 'layer3_embedding_similarity',
-                'existing_paper': similar,
-                'content_hash': content_hash
-            }
-    
+    # State 4: New paper (not in DB, no chunks)
     return {
-        'is_duplicate': False,
+        'should_process': True,
+        'reason': 'New paper',
+        'state': 'state4',
         'duplicate_layer': None,
         'existing_paper': None,
         'content_hash': content_hash
     }
 
-def record_or_update_paper(
+
+def record_processed_paper(
     drive_file_id: str,
     content_hash: str,
     paper_title: str,
     authors: str,
     metadata: Dict,
     pinecone_namespace: str,
-    source_id: int,
-    row_number: int,
-    is_duplicate: bool,
-    existing_paper: Optional[Dict] = None,
-    metadata_fingerprint: str = None,
-    product_id: int = None
+    metadata_fingerprint: Optional[str] = None,
+    product_id: Optional[int] = None
 ) -> int:
     """
-    Record new paper or update existing one with optional metadata fingerprint and product ID.
+    Record a successfully processed paper in processed_papers table.
+    
+    IMPORTANT: Only call this AFTER confirming Pinecone upload succeeded.
     
     Args:
         drive_file_id: Google Drive file ID
@@ -205,30 +381,56 @@ def record_or_update_paper(
         authors: Paper authors
         metadata: Paper metadata
         pinecone_namespace: Pinecone namespace
-        source_id: Data source ID
-        row_number: Row number in sheet
-        is_duplicate: Whether this is a duplicate
-        existing_paper: Existing paper data if duplicate
         metadata_fingerprint: Optional metadata fingerprint
-        product_id: Optional product ID for product-scoped deduplication
+        product_id: Optional product ID
         
     Returns:
         Paper ID
     """
-    if is_duplicate and existing_paper:
-        paper_id = existing_paper['id']
-        update_processed_paper(paper_id, source_id, row_number)
-        return paper_id
-    else:
-        return record_processed_paper(
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        query = """
+            INSERT INTO processed_papers
+            (drive_file_id, content_hash, paper_title, authors, metadata, 
+             pinecone_namespace, metadata_fingerprint, metadata_json, product_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (drive_file_id, product_id) 
+            DO UPDATE SET
+                content_hash = EXCLUDED.content_hash,
+                paper_title = EXCLUDED.paper_title,
+                authors = EXCLUDED.authors,
+                metadata = EXCLUDED.metadata,
+                metadata_json = EXCLUDED.metadata_json,
+                metadata_fingerprint = EXCLUDED.metadata_fingerprint,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+        """
+        
+        cur.execute(query, (
             drive_file_id,
             content_hash,
             paper_title,
             authors,
             metadata,
             pinecone_namespace,
-            source_id,
-            row_number,
             metadata_fingerprint,
+            metadata,
             product_id
-        )
+        ))
+        
+        paper_id = cur.fetchone()[0]
+        conn.commit()
+        
+        logger.info(f"✅ Recorded processed paper: {drive_file_id} (product_id={product_id})")
+        return paper_id
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"❌ Failed to record processed paper: {e}")
+        raise
+        
+    finally:
+        cur.close()
+        conn.close()
