@@ -64,36 +64,44 @@ def extract_drive_file_id(drive_link: str) -> Optional[str]:
 def generate_content_hash(title: str = '', authors: str = '') -> str:
     """
     Generate a content hash from paper metadata fields.
-    
+
     IMPORTANT: Uses ONLY title and authors to match existing deduplication system.
     This ensures backward compatibility with processed_papers table records.
-    
+
     Uses SHA256 hash of: title|authors
-    Returns full 64-character hex digest.
-    
+    Returns full 64-character hex digest, or empty string if both are empty/whitespace.
+
     Args:
         title: Paper title
         authors: Authors string
-        
+
     Returns:
-        64-character SHA256 hash string (full hex digest)
-        
+        64-character SHA256 hash string (full hex digest), or empty string if invalid
+
     Examples:
         >>> generate_content_hash('Neural Networks', 'Smith et al')
         'f77b3c6ef3ef84b6647029dbb0b238b975993590f0780c23e1efea187e8bb517'
-        
+        >>> generate_content_hash('  ', '  ')
+        ''
+
     Note:
         This function MUST match utils.deduplication.generate_content_hash() exactly.
         Year and URL are intentionally excluded to maintain compatibility with
         existing deduplication records in the processed_papers table.
     """
     # Normalize fields (strip whitespace, lowercase) - same as deduplication.py
-    normalized_title = title.lower().strip() if title else ""
-    normalized_authors = authors.lower().strip() if authors else ""
-    
+    normalized_title = title.strip().lower() if title else ""
+    normalized_authors = authors.strip().lower() if authors else ""
+
+    # Validate: if both are empty or whitespace-only, return empty string
+    # This prevents false positives where multiple papers with no metadata match
+    if not normalized_title and not normalized_authors:
+        logger.debug("Cannot generate content hash: both title and authors are empty")
+        return ""
+
     # Concatenate with delimiter - same format as deduplication.py
     content = f"{normalized_title}|{normalized_authors}"
-    
+
     # Generate SHA256 hash
     return hashlib.sha256(content.encode('utf-8')).hexdigest()
 

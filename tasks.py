@@ -162,11 +162,13 @@ def _process_single_pdf_logic(
     job_id: str,
     namespace: str = 'default',
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    product_id: Optional[int] = None
+    product_id: Optional[int] = None,
+    source_id: Optional[int] = None,
+    row_number: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Core PDF processing logic (extracted for reuse).
-    
+
     Args:
         file_id: Google Drive file ID
         filename: PDF filename
@@ -175,7 +177,10 @@ def _process_single_pdf_logic(
         job_id: Parent processing job ID
         namespace: Pinecone namespace
         progress_callback: Optional callback for progress updates
-        
+        product_id: Optional product ID for deduplication
+        source_id: Optional data source ID for source_paper_mapping
+        row_number: Optional row number in the sheet for source_paper_mapping
+
     Returns:
         Dictionary with processing results
     """
@@ -366,9 +371,11 @@ def _process_single_pdf_logic(
                     metadata=row_metadata,
                     pinecone_namespace=namespace,
                     metadata_fingerprint=metadata_fp,
-                    product_id=product_id
+                    product_id=product_id,
+                    source_id=source_id,
+                    row_number=row_number
                 )
-                logger.info(f"✅ Recorded processed paper: {file_id} (product_id={product_id})")
+                logger.info(f"✅ Recorded processed paper: {file_id} (product_id={product_id}, source_id={source_id})")
             except Exception as e:
                 logger.error(f"⚠️  Failed to record processed paper: {e} (continuing anyway)")
         else:
@@ -648,7 +655,9 @@ def process_batch_task(
                     job_id=job_id,
                     namespace=namespace,
                     progress_callback=None,  # Don't update progress for each file step
-                    product_id=product_id  # Pass product_id for deduplication tracking
+                    product_id=product_id,  # Pass product_id for deduplication tracking
+                    source_id=source_id,  # Pass source_id for source_paper_mapping
+                    row_number=row_idx  # Pass row_idx for source_paper_mapping
                 )
                 
                 results['details'].append(pdf_result_data)
