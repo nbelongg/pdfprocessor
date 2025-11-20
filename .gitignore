@@ -70,3 +70,9 @@ downloads/
 
 # UV/UPM cache
 .upm/
+
+# Local state
+.local/
+
+# Nested repositories
+pdfprocessor/
