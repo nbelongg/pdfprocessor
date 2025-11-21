@@ -68,6 +68,11 @@ downloads/
 *.ipynb
 .ipynb_checkpoints/
 
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
 # UV/UPM cache
 .upm/
 
